@@ -10,12 +10,14 @@
 //!   fail-open: `Ok(None)`. The Stage 1 verdict still ships.
 
 mod anthropic;
+mod budget;
 mod context;
 mod noop;
 mod openai_compat;
 mod prompt;
 
 pub use anthropic::AnthropicAdjudicator;
+pub use budget::{BudgetConfig, BudgetedAdjudicator, TokenBudget};
 pub use context::{build_context, Stage2Context};
 pub use noop::NoopAdjudicator;
 pub use openai_compat::OpenAiCompatAdjudicator;

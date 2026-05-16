@@ -72,6 +72,49 @@ impl NpmEcosystem {
         self.limits = limits;
         self
     }
+
+    /// GET with 429/5xx retry + `Retry-After` honouring. Keeps the
+    /// feed daemon healthy under npm's not-quite-documented rate
+    /// limits — the registry returns 429 with a `Retry-After`
+    /// header (sometimes in seconds, sometimes as HTTP-date) when
+    /// you push too hard on the change stream + tarball fetches.
+    async fn get_with_retry(&self, url: &str) -> Result<reqwest::Response> {
+        const MAX_ATTEMPTS: u32 = 6;
+        let mut attempt: u32 = 0;
+        loop {
+            let resp = self
+                .http
+                .get(url)
+                .send()
+                .await
+                .map_err(|e| Error::Fetch(format!("{url}: {e}")))?;
+            let status = resp.status();
+            let retryable = status == reqwest::StatusCode::TOO_MANY_REQUESTS
+                || (status.is_server_error() && status != reqwest::StatusCode::NOT_IMPLEMENTED);
+            if retryable && attempt < MAX_ATTEMPTS - 1 {
+                let retry_after = resp
+                    .headers()
+                    .get(reqwest::header::RETRY_AFTER)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or_else(|| {
+                        // Exponential backoff: 1, 2, 4, 8, 16, 32 s
+                        1u64 << attempt.min(5)
+                    });
+                tracing::warn!(
+                    %url,
+                    %status,
+                    retry_after,
+                    attempt,
+                    "transient registry error; backing off"
+                );
+                tokio::time::sleep(std::time::Duration::from_secs(retry_after)).await;
+                attempt += 1;
+                continue;
+            }
+            return Ok(resp);
+        }
+    }
 }
 
 #[async_trait]
@@ -87,12 +130,7 @@ impl Ecosystem for NpmEcosystem {
             encode_pkg_name(name),
             version
         );
-        let resp = self
-            .http
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| Error::Fetch(format!("{url}: {e}")))?;
+        let resp = self.get_with_retry(&url).await?;
         let status = resp.status();
         if status == reqwest::StatusCode::NOT_FOUND {
             return Err(Error::NotFound(format!("{name}@{version}")));
@@ -111,14 +149,12 @@ impl Ecosystem for NpmEcosystem {
             .ok_or_else(|| Error::Fetch(format!("{url}: missing dist.tarball")))?
             .to_string();
 
-        let bytes = self
-            .http
-            .get(&tarball_url)
-            .send()
-            .await
-            .map_err(|e| Error::Fetch(format!("{tarball_url}: {e}")))?
-            .error_for_status()
-            .map_err(|e| Error::Fetch(format!("{tarball_url}: {e}")))?
+        let tar_resp = self.get_with_retry(&tarball_url).await?;
+        let status = tar_resp.status();
+        if !status.is_success() {
+            return Err(Error::Fetch(format!("{tarball_url}: HTTP {status}")));
+        }
+        let bytes = tar_resp
             .bytes()
             .await
             .map_err(|e| Error::Fetch(format!("{tarball_url}: {e}")))?
@@ -144,12 +180,7 @@ impl Ecosystem for NpmEcosystem {
             self.registry.trim_end_matches('/'),
             encode_pkg_name(name)
         );
-        let resp = self
-            .http
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| Error::Fetch(format!("{url}: {e}")))?;
+        let resp = self.get_with_retry(&url).await?;
         let status = resp.status();
         if status == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
@@ -214,12 +245,7 @@ impl Ecosystem for NpmEcosystem {
             self.registry.trim_end_matches('/'),
             encode_pkg_name(name)
         );
-        let resp = self
-            .http
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| Error::Fetch(format!("{url}: {e}")))?;
+        let resp = self.get_with_retry(&url).await?;
         let status = resp.status();
         if status == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);

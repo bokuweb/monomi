@@ -9,7 +9,10 @@ use monomi_catalog::{CatalogReader, HttpCatalogReader, LocalDirCatalog};
 use monomi_core::{EcosystemId, Status, Verdict};
 use monomi_feed::backfill::BackfillItem;
 use monomi_feed::FeedConfig;
-use monomi_llm::{Adjudicator, AnthropicAdjudicator, NoopAdjudicator, OpenAiCompatAdjudicator};
+use monomi_llm::{
+    Adjudicator, AnthropicAdjudicator, BudgetConfig, BudgetedAdjudicator, NoopAdjudicator,
+    OpenAiCompatAdjudicator, TokenBudget,
+};
 use monomi_npm::{load_tarball_from_path, NpmEcosystem};
 use monomi_nuget::NugetEcosystem;
 use monomi_pipeline::analyze;
@@ -39,6 +42,14 @@ struct Cli {
     /// Override the LLM base URL (OpenAI-compatible providers).
     #[arg(long, global = true)]
     llm_base_url: Option<String>,
+
+    /// Hourly input-token cap for Stage 2 (0 disables the cap).
+    #[arg(long, global = true, default_value_t = 500_000)]
+    llm_hourly_input_tokens: u32,
+
+    /// Daily input-token cap for Stage 2 (0 disables the cap).
+    #[arg(long, global = true, default_value_t = 5_000_000)]
+    llm_daily_input_tokens: u32,
 
     #[command(subcommand)]
     cmd: Cmd,
@@ -450,11 +461,35 @@ fn pick_adjudicator(cli: &Cli) -> Arc<dyn Adjudicator> {
         LlmProvider::Auto => auto_detect_provider(),
         p => p,
     };
-    build_adjudicator(
+    let inner = build_adjudicator(
         provider,
         cli.llm_model.as_deref(),
         cli.llm_base_url.as_deref(),
-    )
+    );
+    // Wrap with a per-process token budget unless both caps are
+    // explicitly disabled with 0.
+    if cli.llm_hourly_input_tokens == 0 && cli.llm_daily_input_tokens == 0 {
+        return inner;
+    }
+    // 0 means "no cap on this axis" — translate to u32::MAX so the
+    // arithmetic in TokenBudget doesn't have to special-case it.
+    let cfg = BudgetConfig {
+        hourly_input_tokens: cap_or_max(cli.llm_hourly_input_tokens),
+        hourly_output_tokens: cap_or_max(cli.llm_hourly_input_tokens / 16),
+        daily_input_tokens: cap_or_max(cli.llm_daily_input_tokens),
+        daily_output_tokens: cap_or_max(cli.llm_daily_input_tokens / 16),
+        per_call_output_reserve: 1024,
+    };
+    let budget = Arc::new(TokenBudget::new(cfg));
+    Arc::new(BudgetedAdjudicator::new(inner, budget))
+}
+
+fn cap_or_max(n: u32) -> u32 {
+    if n == 0 {
+        u32::MAX
+    } else {
+        n
+    }
 }
 
 fn auto_detect_provider() -> LlmProvider {
