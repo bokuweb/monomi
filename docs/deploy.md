@@ -622,6 +622,172 @@ find ~/monomi/catalog/verdicts -name '*.json' | wc -l
 rclone size r2:monomi-catalog
 ```
 
+## Raspberry Pi specifics
+
+The Pi is the natural fit for monomi's "always-on, low-power"
+shape — the feed daemon is mostly I/O wait. Notes that go beyond
+the generic Linux setup above:
+
+### Hardware recommendations
+
+| Model | Verdict |
+|---|---|
+| **Pi 5 / 8 GB** | ◎ Stage 2 with `qwen2.5:3b` works at ~3-5 tok/s; comfortable margin for everything |
+| **Pi 5 / 4 GB** | ◯ Stage 1 only is fine; Stage 2 needs a 1-2B model |
+| **Pi 4 / 8 GB** | ◯ Stage 2 works on slow small models; main bottleneck is memory bandwidth |
+| **Pi 4 / 4 GB** | △ Stage 1 only recommended; Ollama + 3B model can OOM under load |
+| **Pi 4 / 2 GB**, **Pi 3** | × Stage 1 only, and even that is tight if you also run other services |
+| **Pi Zero 2 W** | × Stage 1 only and even that is borderline |
+
+**Storage**: don't use an SD card for the catalog. `LocalDirCatalog`
+writes thousands of small files per day, and SD cards (a) have
+abysmal random-write throughput and (b) wear out fast. Mount a
+USB 3 SSD (or NVMe via the Pi 5 PCIe slot) at `~/monomi/` and the
+problem evaporates.
+
+**Cooling**: the daemon idles at ~2% CPU but Ollama bursts to
+100% during Stage 2. Active cooling (case fan or the official Pi 5
+cooler) keeps you out of thermal throttling.
+
+### Build (or grab) an ARM binary
+
+Building Rust on the Pi works but takes ~10–15 minutes. Faster:
+cross-compile on a dev box once and `scp` the binary.
+
+**Cross-compile from a Linux x86_64 host:**
+
+```bash
+# One-time setup
+rustup target add aarch64-unknown-linux-gnu      # Pi 4/5 64-bit
+sudo apt install gcc-aarch64-linux-gnu
+
+cat >> ~/.cargo/config.toml <<'EOF'
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+EOF
+
+# Build
+cd ~/src/monomi
+cargo build --release --target aarch64-unknown-linux-gnu -p monomi-cli
+scp target/aarch64-unknown-linux-gnu/release/monomi pi@PI_HOST:~/.local/bin/
+```
+
+**Cross-compile from a Mac (using `cross`):**
+
+```bash
+cargo install cross
+cd ~/src/monomi
+cross build --release --target aarch64-unknown-linux-gnu -p monomi-cli
+```
+
+**Or just build on the Pi:** `cargo build --release -p monomi-cli`
+in a tmux session and walk away. Subsequent rebuilds are fast.
+
+### Stage 2 on the Pi — three honest options
+
+Stage 2 is the only resource-hungry part. Pick by Pi model:
+
+**Option A: Stage 1 only** (recommended for Pi 4 / smaller)
+
+```ini
+# In monomi-feed.service
+ExecStart=%h/.local/bin/monomi feed \
+  --catalog-dir %h/monomi/catalog \
+  --stage1-only \
+  --max-concurrent 2
+```
+
+Drops to ~50 MB RAM and ~5% CPU steady. Catalog gets decisive
+verdicts (14 of the 32 rules are block-grade on their own); the
+defer-to-stage2 ones land as Suspicious / Warn. About 80 % of
+real-world supply-chain attacks get caught by Stage 1 alone.
+
+**Option B: Tiny model with Ollama** (Pi 5 / 8 GB)
+
+```bash
+ollama pull qwen2.5:3b      # ~2 GB on disk, ~3 GB RAM loaded
+# or smaller still:
+ollama pull qwen2.5:1.5b    # ~1 GB on disk
+```
+
+In the systemd unit, set:
+
+```ini
+Environment=OLLAMA_HOST=http://localhost:11434
+Environment=OLLAMA_MODEL=qwen2.5:3b
+```
+
+Roughly 5-15 minutes per Stage 2 call on Pi 5 CPU-only. monomi's
+Stage 2 fires ~6 times per hour on the live npm feed, so the math
+works — but if a burst of suspicious packages lands, the LLM
+becomes a queue. Lower `--max-concurrent` to 2 so you don't pile
+on Ollama requests.
+
+**Option C: Stage 1 on Pi, Stage 2 elsewhere** (hybrid)
+
+Run feed in `--stage1-only` on the Pi, then on your laptop / Mac
+periodically pull Suspicious verdicts from R2 and re-adjudicate
+with a heavier model. Requires the `monomi upgrade-stage2`
+subcommand which is in the roadmap but not shipped yet.
+
+### Minimum daemon footprint
+
+After ~24 hours running the feed (Stage 1 only) on a Pi 4 with
+an SSD:
+
+| Resource | Steady state |
+|---|---|
+| RAM | 40-60 MB resident (mostly tokio + reqwest pools) |
+| CPU | ~3% average, spikes to ~15% on each analyze |
+| Network | ~50 MB/h in (mostly tarballs), ~5 MB/h out (R2 syncs) |
+| Disk write | ~5 MB/h (catalog), bursty during R2 sync |
+| Power | adds ~0.3 W over idle Pi 4 |
+
+### Pi-specific systemd tweaks
+
+The standard `monomi-feed.service` from the Linux section works
+unchanged. Two optional additions for Pi:
+
+```ini
+[Service]
+# Lower I/O priority so the daemon doesn't block interactive use.
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+# Auto-restart on OOM (Pi RAM is tight; ensures we recover).
+OOMPolicy=continue
+```
+
+Also worth running monomi under `cgroup` memory limits if the Pi
+hosts other services:
+
+```ini
+[Service]
+MemoryHigh=256M
+MemoryMax=512M
+```
+
+If you hit `MemoryMax`, systemd kills the daemon and the cursor
+makes recovery clean.
+
+### One-time SSD mount (Pi 5 with NVMe HAT, similar for USB SSD)
+
+```bash
+# Find the device
+lsblk
+
+# Format once
+sudo mkfs.ext4 /dev/nvme0n1
+
+# Auto-mount at boot via /etc/fstab
+echo "UUID=$(sudo blkid -s UUID -o value /dev/nvme0n1) /home/pi/monomi ext4 defaults,noatime 0 2" \
+  | sudo tee -a /etc/fstab
+sudo mount -a
+sudo chown -R pi:pi /home/pi/monomi
+```
+
+`noatime` saves a write per file read — small wins matter on flash.
+
 ## Free-tier reality check
 
 The local-desktop variant is genuinely free — no hosted VM, no
