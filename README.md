@@ -13,8 +13,10 @@ a Cloudflare R2 catalog keyed by tarball integrity hash, so
 consumers (primarily sakimori's HTTPS proxy) can answer
 "is this artifact safe to admit?" with a single object-store GET.
 
-See [plan.md](plan.md) for the design rationale and
-[architecture.md](architecture.md) for the concrete crate layout.
+See [plan.md](plan.md) for the design rationale,
+[architecture.md](architecture.md) for the concrete crate layout,
+and [docs/deploy.md](docs/deploy.md) for a copy-pasteable production
+deployment recipe (R2 + systemd + rclone).
 
 ## Status
 
