@@ -836,6 +836,7 @@ name = "monomi-cargo"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "flate2",
  "monomi-core",
  "reqwest",

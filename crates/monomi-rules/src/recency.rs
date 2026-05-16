@@ -40,7 +40,10 @@ impl Rule for RecencySignals {
     }
 
     fn applies_to(&self, eco: EcosystemId) -> bool {
-        matches!(eco, EcosystemId::Npm)
+        // Any ecosystem whose `Ecosystem::fetch_registry_metadata`
+        // surfaces `package_created_at` + `total_versions` works
+        // with this rule; npm and cargo do, others currently do not.
+        matches!(eco, EcosystemId::Npm | EcosystemId::Cargo)
     }
 
     fn evaluate(&self, ctx: &AnalysisCtx<'_>) -> Vec<Finding> {

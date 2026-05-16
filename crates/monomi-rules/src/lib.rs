@@ -15,6 +15,7 @@ mod cloud_metadata;
 mod corpus;
 mod crypto_miner;
 mod dangerous_apis;
+mod dns_exfil;
 mod dynamic_require;
 mod encoded_url;
 mod env_harvest;
@@ -25,16 +26,19 @@ mod hidden_unicode;
 mod install_http;
 mod known_exfil;
 mod lifecycle_present;
+mod metadata_smuggling;
 mod native_binary;
 mod nuget_install_ps1;
 mod nuget_tools_dll;
 mod persistence_paths;
+mod publish_time;
 mod pypi_setup;
 mod raw_github_fetch;
 mod recency;
 mod runner;
 mod self_delete;
 mod shell_pipe;
+mod time_bomb;
 mod token_theft;
 mod typosquat;
 mod wallet_drainer;
@@ -47,6 +51,7 @@ pub use cloud_metadata::CloudMetadataLiteral;
 pub use corpus::default_corpus;
 pub use crypto_miner::CryptoMinerLiteral;
 pub use dangerous_apis::DangerousLifecycleApi;
+pub use dns_exfil::DnsExfil;
 pub use dynamic_require::DynamicRequire;
 pub use encoded_url::EncodedUrlBytes;
 pub use env_harvest::EnvHarvest;
@@ -57,16 +62,19 @@ pub use hidden_unicode::HiddenUnicode;
 pub use install_http::InstallTimeOutboundHttp;
 pub use known_exfil::KnownExfilEndpoint;
 pub use lifecycle_present::LifecyclePresent;
+pub use metadata_smuggling::MetadataPayloadSmuggling;
 pub use native_binary::NativeBinaryUndeclared;
 pub use nuget_install_ps1::{InstallPs1DangerousApi, InstallPs1Present};
 pub use nuget_tools_dll::ToolsNativeBinary;
 pub use persistence_paths::PersistencePathLiteral;
+pub use publish_time::PublishTimeHostility;
 pub use pypi_setup::{SetupPyDangerousApi, SetupPyPresent};
 pub use raw_github_fetch::RawScmFetch;
 pub use recency::RecencySignals;
 pub use runner::{run, RunOutcome, RULESET_VERSION};
 pub use self_delete::SelfDeletePayload;
 pub use shell_pipe::LifecycleShellPipe;
+pub use time_bomb::TimeBombActivation;
 pub use token_theft::CiTokenTheft;
 pub use typosquat::TyposquatCandidate;
 pub use wallet_drainer::WalletDrainerLiteral;
@@ -101,6 +109,10 @@ pub fn default_ruleset() -> Vec<Box<dyn Rule>> {
         Box::new(HiddenUnicode),
         Box::new(InstallTimeOutboundHttp),
         Box::new(CryptoMinerLiteral),
+        Box::new(DnsExfil),
+        Box::new(MetadataPayloadSmuggling),
+        Box::new(PublishTimeHostility),
+        Box::new(TimeBombActivation),
         // cargo-only
         Box::new(BuildRsPresent),
         Box::new(BuildRsDangerousApi),

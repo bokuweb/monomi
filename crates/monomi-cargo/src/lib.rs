@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use flate2::read::GzDecoder;
 use monomi_core::{
     artifact::{EcosystemId, HashAlgo, Integrity},
-    ecosystem::{Ecosystem, LifecycleEntry, LifecycleKind, Tarball},
+    ecosystem::{Ecosystem, LifecycleEntry, LifecycleKind, RegistryMetadata, Tarball},
     entry::{Entry, EntryKind},
     error::{Error, Result},
     manifest::Manifest,
@@ -111,6 +111,74 @@ impl Ecosystem for CargoEcosystem {
             source_url: Some(url),
             bytes,
         })
+    }
+
+    async fn fetch_registry_metadata(
+        &self,
+        name: &str,
+        version: &str,
+    ) -> Result<Option<RegistryMetadata>> {
+        // `https://crates.io/api/v1/crates/<name>` returns the
+        // crate-level `created_at`, the full version array with
+        // per-version `created_at` and `published_by.login`, plus
+        // the owners list. One round-trip.
+        let url = format!("https://crates.io/api/v1/crates/{name}");
+        let resp = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| Error::Fetch(format!("{url}: {e}")))?;
+        let status = resp.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !status.is_success() {
+            return Err(Error::Fetch(format!("{url}: HTTP {status}")));
+        }
+        let json: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| Error::Fetch(format!("{url}: {e}")))?;
+
+        let mut meta = RegistryMetadata::default();
+        if let Some(crate_obj) = json.get("crate") {
+            if let Some(s) = crate_obj.get("created_at").and_then(|v| v.as_str()) {
+                if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(s) {
+                    meta.package_created_at = Some(ts.with_timezone(&chrono::Utc));
+                }
+            }
+        }
+        if let Some(versions) = json.get("versions").and_then(|v| v.as_array()) {
+            meta.total_versions = Some(versions.len() as u32);
+            for v in versions {
+                let Some(num) = v.get("num").and_then(|x| x.as_str()) else {
+                    continue;
+                };
+                let Some(s) = v.get("created_at").and_then(|x| x.as_str()) else {
+                    continue;
+                };
+                let Ok(ts) = chrono::DateTime::parse_from_rfc3339(s) else {
+                    continue;
+                };
+                let ts = ts.with_timezone(&chrono::Utc);
+                if num == version {
+                    meta.published_at = Some(ts);
+                    if let Some(by) = v
+                        .get("published_by")
+                        .and_then(|p| p.get("login"))
+                        .and_then(|n| n.as_str())
+                    {
+                        meta.published_by = Some(by.to_string());
+                    }
+                }
+                meta.version_publish_times.insert(num.to_string(), ts);
+            }
+        }
+        // Owners are a separate endpoint
+        // (`/api/v1/crates/<name>/owners`); skip the extra round-trip
+        // for V1 and leave maintainers empty.
+        Ok(Some(meta))
     }
 
     async fn latest_version(&self, name: &str) -> Result<Option<String>> {

