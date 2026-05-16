@@ -1,0 +1,29 @@
+[package]
+name = "monomi-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "monomi"
+path = "src/main.rs"
+
+[dependencies]
+monomi-core.workspace = true
+monomi-npm.workspace = true
+monomi-cargo.workspace = true
+monomi-pypi.workspace = true
+monomi-nuget.workspace = true
+monomi-rules.workspace = true
+monomi-llm.workspace = true
+monomi-catalog.workspace = true
+monomi-pipeline.workspace = true
+monomi-feed.workspace = true
+clap.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

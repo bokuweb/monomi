@@ -1,0 +1,54 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/monomi-core",
+    "crates/monomi-npm",
+    "crates/monomi-cargo",
+    "crates/monomi-pypi",
+    "crates/monomi-nuget",
+    "crates/monomi-rules",
+    "crates/monomi-llm",
+    "crates/monomi-catalog",
+    "crates/monomi-pipeline",
+    "crates/monomi-feed",
+    "crates/monomi-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bokuweb/monomi"
+
+[workspace.dependencies]
+anyhow = "1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util"] }
+async-trait = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "json", "stream"] }
+flate2 = "1"
+tar = "0.4"
+sha2 = "0.10"
+base64 = "0.22"
+regex = "1"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+monomi-core = { path = "crates/monomi-core" }
+monomi-npm = { path = "crates/monomi-npm" }
+monomi-cargo = { path = "crates/monomi-cargo" }
+monomi-pypi = { path = "crates/monomi-pypi" }
+monomi-nuget = { path = "crates/monomi-nuget" }
+monomi-rules = { path = "crates/monomi-rules" }
+monomi-llm = { path = "crates/monomi-llm" }
+monomi-catalog = { path = "crates/monomi-catalog" }
+monomi-pipeline = { path = "crates/monomi-pipeline" }
+monomi-feed = { path = "crates/monomi-feed" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

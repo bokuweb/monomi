@@ -1,0 +1,24 @@
+[package]
+name = "monomi-feed"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+monomi-core.workspace = true
+monomi-npm.workspace = true
+monomi-catalog.workspace = true
+monomi-pipeline.workspace = true
+monomi-llm.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "fs", "io-util", "sync", "time", "signal"] }
+reqwest = { workspace = true, features = ["stream"] }
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+futures-util = "0.3"
+
+[dev-dependencies]
+tempfile = "3"

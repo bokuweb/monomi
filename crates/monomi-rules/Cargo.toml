@@ -1,0 +1,22 @@
+[package]
+name = "monomi-rules"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+monomi-core.workspace = true
+regex.workspace = true
+once_cell = "1"
+serde_json.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+monomi-npm.workspace = true
+monomi-cargo.workspace = true
+monomi-pypi.workspace = true
+monomi-nuget.workspace = true
+flate2.workspace = true
+tar.workspace = true
+zip = { version = "2", default-features = false, features = ["deflate"] }
