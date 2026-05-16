@@ -2,8 +2,18 @@
 
 End-to-end recipe for running the npm change-stream subscriber as a
 long-lived process and mirroring its verdict catalog to Cloudflare
-R2 (or any S3-compatible target). Estimated wall-clock setup time:
-**~30 minutes** including R2 account work.
+R2 (or any S3-compatible target).
+
+Two flavours are covered:
+
+- **Server deployment** — dedicated VM / container, systemd as PID 1.
+  Estimated setup: ~30 minutes.
+- **Local desktop deployment** — run on your own Mac / Linux box
+  alongside Ollama for free Stage 2. Estimated setup: ~15 minutes.
+
+Pick the desktop path if you have a GPU or M-series Mac and want
+to skip the Anthropic API bill; pick the server path for headless
+operation.
 
 The flow we build:
 
@@ -324,3 +334,298 @@ forces content comparison; if you removed it, add it back.
 must be > worst-case worker drain (in-flight LLM call + tarball
 fetch). Default `90s` works for the standard tuning; bump to
 `300s` if you raised `--max-concurrent` past 16.
+
+---
+
+# Local desktop deployment (Mac / Linux with Ollama)
+
+Use this path if you want to run the daemon on your own machine
+alongside a local LLM (Ollama / LM Studio). Trade-off: feed pauses
+while the box is asleep / off — `feed-state.json` checkpoints the
+cursor so a restart resumes from where it stopped, but if you're
+asleep for 8 hours the catch-up burst will take several minutes.
+
+## Prerequisites
+
+- Disk ~5 GB free for the catalog (1.5 GB/year of growth + headroom)
+- One of:
+  - **M-series Mac**: Apple silicon runs `llama3.1:8b` quantized
+    comfortably via Ollama
+  - **Linux with GPU**: 8 GB+ VRAM for a Q4-quantized 8B model
+  - **Linux CPU-only**: doable but slow; consider a smaller model
+    (`llama3.2:3b`) or set the budget low and accept partial Stage 2
+- Ollama installed and the model pulled:
+  ```bash
+  ollama pull llama3.1     # or llama3.2:3b on CPU-only hosts
+  ollama serve             # if not already running as a service
+  ```
+
+## Install monomi + state directory
+
+```bash
+git clone https://github.com/bokuweb/monomi ~/src/monomi
+cd ~/src/monomi
+cargo build --release -p monomi-cli
+
+# Keep the binary somewhere stable.
+mkdir -p ~/.local/bin
+cp target/release/monomi ~/.local/bin/monomi
+# Make sure ~/.local/bin is on PATH (most shells already do this).
+
+mkdir -p ~/monomi/catalog
+```
+
+Warm-start the catalog with `monomi --stage1-only backfill` exactly
+as in the server section above.
+
+## rclone for R2
+
+Same setup as the server section: `rclone config`, name the remote
+`r2`. The smoke-test commands all work without sudo.
+
+## macOS — launchd
+
+Two LaunchAgents: one for the feed daemon, one for the periodic R2
+sync. Both live under `~/Library/LaunchAgents/` so they run as
+*your* user (no root, no system-wide install).
+
+**`~/Library/LaunchAgents/com.monomi.feed.plist`**
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.monomi.feed</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/YOU/.local/bin/monomi</string>
+    <string>feed</string>
+    <string>--catalog-dir</string>
+    <string>/Users/YOU/monomi/catalog</string>
+    <string>--max-concurrent</string>
+    <string>4</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>RUST_LOG</key>
+    <string>info</string>
+    <!-- Ollama auto-detect: monomi picks it up when OLLAMA_HOST
+         is set (or http://localhost:11434 is reachable). -->
+    <key>OLLAMA_HOST</key>
+    <string>http://localhost:11434</string>
+    <key>OLLAMA_MODEL</key>
+    <string>llama3.1</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <!-- launchd doesn't have a "graceful stop timeout" like systemd,
+       so we pass SIGTERM and wait the default 20s. If you raised
+       max_concurrent, bump ExitTimeOut. -->
+  <key>ExitTimeOut</key>
+  <integer>120</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/YOU/monomi/feed.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOU/monomi/feed.log</string>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/YOU/monomi</string>
+</dict>
+</plist>
+```
+
+**`~/Library/LaunchAgents/com.monomi.sync.plist`** (timer)
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.monomi.sync</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/rclone</string>
+    <string>sync</string>
+    <string>/Users/YOU/monomi/catalog</string>
+    <string>r2:monomi-catalog</string>
+    <string>--checksum</string>
+    <string>--transfers</string><string>16</string>
+    <string>--checkers</string><string>32</string>
+    <string>--exclude</string><string>feed-state.json</string>
+    <string>--exclude</string><string>*.tmp</string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/YOU/monomi/sync.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOU/monomi/sync.log</string>
+</dict>
+</plist>
+```
+
+Adjust the rclone path (`/usr/local/bin/rclone` on Intel Mac, your
+distribution's path on Linux).
+
+Load:
+
+```bash
+# Substitute your username for YOU in both files first, then:
+launchctl load   ~/Library/LaunchAgents/com.monomi.feed.plist
+launchctl load   ~/Library/LaunchAgents/com.monomi.sync.plist
+
+# Check status
+launchctl list | grep com.monomi
+tail -f ~/monomi/feed.log
+```
+
+To stop / unload:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.monomi.feed.plist
+launchctl unload ~/Library/LaunchAgents/com.monomi.sync.plist
+```
+
+### macOS sleep / wake notes
+
+- LaunchAgents are paused while the Mac is asleep; they resume on
+  wake. The `_changes` long-poll connection drops on sleep and the
+  daemon reconnects from the persisted cursor, so no data loss.
+- If you'd like to also keep running while *logged out*, switch
+  from `~/Library/LaunchAgents` to `/Library/LaunchDaemons` and
+  load with `sudo launchctl bootstrap system <plist>`. Most desktop
+  users don't need this.
+- Ollama also goes to sleep with the system; this is fine — Stage
+  2 calls during the catch-up burst will simply timeout once and
+  fail open until Ollama comes back.
+
+## Linux — systemd `--user`
+
+systemd's per-user instance can keep services running as your user
+without needing root. The catch: a normal user systemd manager
+stops when your last login session ends. The fix is one command:
+
+```bash
+sudo loginctl enable-linger $USER   # services keep running after logout
+```
+
+**`~/.config/systemd/user/monomi-feed.service`**
+
+```ini
+[Unit]
+Description=monomi npm _changes feed (user)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/monomi
+ExecStart=%h/.local/bin/monomi feed \
+  --catalog-dir %h/monomi/catalog \
+  --max-concurrent 4
+Environment=RUST_LOG=info
+Environment=OLLAMA_HOST=http://localhost:11434
+Environment=OLLAMA_MODEL=llama3.1
+Restart=always
+RestartSec=15
+TimeoutStopSec=120
+
+[Install]
+WantedBy=default.target
+```
+
+**`~/.config/systemd/user/monomi-sync.service`**
+
+```ini
+[Unit]
+Description=monomi → R2 sync (user)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/rclone sync \
+  %h/monomi/catalog \
+  r2:monomi-catalog \
+  --checksum \
+  --transfers 16 \
+  --checkers 32 \
+  --exclude feed-state.json \
+  --exclude '*.tmp'
+```
+
+**`~/.config/systemd/user/monomi-sync.timer`**
+
+```ini
+[Unit]
+Description=monomi → R2 sync (every 60s)
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
+```
+
+Enable:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now monomi-feed.service
+systemctl --user enable --now monomi-sync.timer
+
+journalctl --user -u monomi-feed -f
+systemctl --user list-timers monomi-sync
+```
+
+### Linux suspend / wake notes
+
+- Like macOS, the daemon pauses on suspend and reconnects on wake.
+- `loginctl enable-linger` is one-time; you don't need to redo it.
+- If Ollama runs as a separate systemd-user service, declare a
+  dependency in the feed unit: `After=ollama.service` /
+  `Requires=ollama.service`.
+
+## Verifying the local setup
+
+```bash
+# Confirm Ollama is actually being asked
+journalctl --user -u monomi-feed -f --output cat \
+  | rg 'stage 2'
+
+# Or on macOS
+tail -f ~/monomi/feed.log | grep 'stage 2'
+
+# After a couple minutes, check the catalog is filling up:
+find ~/monomi/catalog/verdicts -name '*.json' | wc -l
+
+# And R2 has the same files:
+rclone size r2:monomi-catalog
+```
+
+## Free-tier reality check
+
+The local-desktop variant is genuinely free — no hosted VM, no
+LLM bill, just R2 storage at ~$0.27/year for the catalog. The
+only ongoing cost is your machine being on, and the only failure
+mode is your machine being off (which the cursor handles
+gracefully on next boot).
