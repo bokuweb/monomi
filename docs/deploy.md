@@ -770,6 +770,86 @@ MemoryMax=512M
 If you hit `MemoryMax`, systemd kills the daemon and the cursor
 makes recovery clean.
 
+### Offload Stage 2 to another LAN host (LM Studio on a desktop)
+
+Best of both worlds for "Pi + gaming PC at home": run the always-on
+feed daemon on the Pi (low power, no fan), and point Stage 2 at LM
+Studio (or Ollama, or vLLM) running on the beefy machine in the
+next room. The protocol is OpenAI-compatible so monomi connects
+with no code change.
+
+**Step 1 — On the Windows / Mac / Linux host running LM Studio:**
+
+1. Open LM Studio → **Local Server** tab.
+2. Load a model — `qwen2.5-coder-7b-instruct-q4_k_m` is a good
+   default; bigger if you have the VRAM.
+3. **Important**: open the gear icon and toggle
+   **"Serve on Local Network"** (off by default — it binds to
+   127.0.0.1 only otherwise and the Pi can't reach it).
+4. Note the port (default `1234`).
+5. Open `Windows Firewall` (or the platform equivalent) and allow
+   inbound TCP on that port for the **Private** profile only. Do
+   NOT allow it on the Public profile.
+
+Confirm the host is reachable from the Pi:
+
+```bash
+# From the Pi
+curl http://<windows-ip>:1234/v1/models
+```
+
+You should see a JSON list with the loaded model's id.
+
+**Step 2 — On the Pi, point monomi at it:**
+
+In the systemd unit (`~/.config/systemd/user/monomi-feed.service`):
+
+```ini
+[Service]
+# Pretend the LM Studio endpoint is an Ollama — monomi's `ollama`
+# provider variant is really "OpenAI-compatible without auth",
+# which is exactly LM Studio's local server.
+ExecStart=%h/.local/bin/monomi feed \
+  --catalog-dir %h/monomi/catalog \
+  --llm ollama \
+  --llm-base-url http://192.168.1.42:1234/v1 \
+  --llm-model qwen2.5-coder-7b-instruct \
+  --max-concurrent 2
+Environment=RUST_LOG=info
+```
+
+Adjust `--llm-model` to whatever id `curl /v1/models` returned
+(LM Studio sometimes prefixes the org name).
+
+Restart:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user restart monomi-feed
+journalctl --user -u monomi-feed -f | rg 'stage 2'
+```
+
+**Step 3 — Operational notes**
+
+- **Auth**: LM Studio's local server is unauthenticated. Only use
+  this on a trusted LAN. If you must traverse a less-trusted
+  network, front it with a Tailscale / Wireguard tunnel and bind
+  LM Studio to the tunnel interface.
+- **Latency**: a single LAN hop adds ~1 ms; negligible compared to
+  the seconds-to-minutes LLM inference time.
+- **Desktop sleep**: if the Windows host goes to sleep, Stage 2
+  fails open (`monomi-feed` logs `transport timeout` and the Stage
+  1 verdict is what lands in R2). Either disable sleep on the host
+  or accept the partial Stage 2 coverage.
+- **DHCP changes IP**: pin the LM Studio host to a static IP on
+  your router's DHCP reservations, or use mDNS
+  (`http://windowsbox.local:1234/v1` — works on most home LANs).
+- **Same pattern works for Ollama on the desktop**: identical
+  config, just point at `http://<host>:11434/v1`.
+
+This setup keeps the Pi at ~5% CPU / 60 MB RAM and pushes the
+inference load to the desktop only when it's actually needed.
+
 ### One-time SSD mount (Pi 5 with NVMe HAT, similar for USB SSD)
 
 ```bash
