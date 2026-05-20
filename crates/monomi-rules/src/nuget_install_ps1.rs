@@ -44,7 +44,7 @@ impl Rule for InstallPs1Present {
                 excerpt: Some(truncate(&life.body, 240)),
                 message: format!("install-time PowerShell hook `{}` present", life.name),
                 defers_to_stage2: false,
-            });
+                capabilities: Default::default(),            });
         }
         out
     }
@@ -110,7 +110,7 @@ impl Rule for InstallPs1DangerousApi {
                         m.as_str()
                     ),
                     defers_to_stage2: true,
-                });
+                    capabilities: Default::default(),                });
             }
         }
         out

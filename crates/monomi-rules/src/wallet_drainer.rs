@@ -10,7 +10,7 @@
 //! - Browser extension IDs for major wallets (MetaMask, Phantom)
 //! - Ledger / Trezor device-path probes
 
-use monomi_core::{AnalysisCtx, Category, EcosystemId, Finding, Location, Rule, Severity};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, Finding, Location, Rule, Severity};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -94,5 +94,6 @@ fn make_finding(path: String, hit: String) -> Finding {
              published package to reference this"
         ),
         defers_to_stage2: false,
+        capabilities: [Capability::WalletAccess].into_iter().collect(),
     }
 }

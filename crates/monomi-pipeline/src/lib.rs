@@ -209,6 +209,7 @@ mod tests {
             findings: vec![],
             score: 0,
             verdict: v,
+            capabilities: Default::default(),
         }
     }
 

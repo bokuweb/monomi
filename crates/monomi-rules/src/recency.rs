@@ -80,7 +80,7 @@ impl Rule for RecencySignals {
                         total
                     ),
                     defers_to_stage2: true,
-                });
+                    capabilities: Default::default(),                });
             }
         }
 
@@ -113,7 +113,7 @@ impl Rule for RecencySignals {
                         age.num_days()
                     ),
                     defers_to_stage2: true,
-                });
+                    capabilities: Default::default(),                });
             }
         }
 

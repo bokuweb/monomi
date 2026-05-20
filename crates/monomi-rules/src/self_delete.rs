@@ -4,9 +4,7 @@
 //! forensic responders can't find what executed. Near-zero legit
 //! use in a published npm package.
 
-use monomi_core::{
-    AnalysisCtx, Category, EcosystemId, EntryKind, Finding, Location, Rule, Severity,
-};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, EntryKind, Finding, Location, Rule, Severity,};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -70,5 +68,6 @@ fn make_finding(path: String, hit: String) -> Finding {
         message: "self-deleting payload — code unlinks `__filename` / `__dirname` (anti-forensics)"
             .into(),
         defers_to_stage2: false,
+        capabilities: [Capability::SelfDelete, Capability::FsRead].into_iter().collect(),
     }
 }

@@ -5,7 +5,8 @@
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use monomi_core::{
-    AnalysisCtx, ArtifactId, Corpus, Ecosystem, EcosystemId, HashAlgo, Integrity, Stage1Verdict,
+    AnalysisCtx, ArtifactId, Capability, Corpus, Ecosystem, EcosystemId, HashAlgo, Integrity,
+    Stage1Verdict,
 };
 use monomi_npm::NpmEcosystem;
 use monomi_rules::{default_ruleset, run};
@@ -67,6 +68,38 @@ fn clean_package_is_clean() {
     let s = analyze(bytes);
     assert!(s.findings.is_empty(), "got findings: {:?}", s.findings);
     assert_eq!(s.verdict, Stage1Verdict::Clean);
+}
+
+#[test]
+fn capabilities_aggregate_from_findings_into_stage1_result() {
+    // A postinstall that fetches over HTTPS must surface
+    // LifecycleInstall + InstallTimeNetwork + NetHttp in the
+    // aggregated capability set — this is the substrate the M8
+    // version-over-version diff rule consumes.
+    let pkg = r#"{
+        "name": "fetchy",
+        "version": "1.0.0",
+        "scripts": {
+            "postinstall": "node -e \"require('https').get('https://example.com/probe')\""
+        }
+    }"#;
+    let bytes = build_tgz(&[("package/package.json", pkg.as_bytes())]);
+    let s = analyze(bytes);
+    assert!(
+        s.capabilities.contains(&Capability::LifecycleInstall),
+        "missing LifecycleInstall in {:?}",
+        s.capabilities,
+    );
+    assert!(
+        s.capabilities.contains(&Capability::InstallTimeNetwork),
+        "missing InstallTimeNetwork in {:?}",
+        s.capabilities,
+    );
+    assert!(
+        s.capabilities.contains(&Capability::NetHttp),
+        "missing NetHttp in {:?}",
+        s.capabilities,
+    );
 }
 
 #[test]

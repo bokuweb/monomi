@@ -3,6 +3,7 @@
 //! See `architecture.md` at the repo root for the design.
 
 pub mod artifact;
+pub mod capability;
 pub mod ecosystem;
 pub mod entry;
 pub mod error;
@@ -12,6 +13,7 @@ pub mod rule;
 pub mod verdict;
 
 pub use artifact::{ArtifactId, EcosystemId, HashAlgo, Integrity};
+pub use capability::{Capability, CapabilitySet};
 pub use ecosystem::{
     Ecosystem, LifecycleEntry, LifecycleKind, PackageDiff, RegistryMetadata, Tarball,
 };

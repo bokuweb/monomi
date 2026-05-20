@@ -18,9 +18,7 @@
 //! compare dates, so the LLM gets the final call.
 
 use chrono::{Datelike, Utc};
-use monomi_core::{
-    AnalysisCtx, Category, EcosystemId, EntryKind, Finding, Location, Rule, Severity,
-};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, EntryKind, Finding, Location, Rule, Severity,};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -98,6 +96,7 @@ impl TimeBombActivation {
                      activation shape (current epoch ms: {now_ms})"
                 ),
                 defers_to_stage2: true,
+                capabilities: [Capability::TimeBomb].into_iter().collect(),
             });
         }
         // Date literal in source, only flag when it's in the future.
@@ -126,6 +125,7 @@ impl TimeBombActivation {
                      possible time-bomb activation"
                 ),
                 defers_to_stage2: true,
+                capabilities: [Capability::TimeBomb].into_iter().collect(),
             });
         }
     }

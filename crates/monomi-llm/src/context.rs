@@ -240,9 +240,10 @@ mod tests {
                 excerpt: Some("child_process".into()),
                 message: "uses child_process".into(),
                 defers_to_stage2: true,
-            }],
+                capabilities: Default::default(),            }],
             score: 5,
             verdict: Stage1Verdict::Suspicious,
+            capabilities: Default::default(),
         };
         let ctx = build_context(
             EcosystemId::Npm,
@@ -274,6 +275,7 @@ mod tests {
             findings: vec![],
             score: 0,
             verdict: Stage1Verdict::Clean,
+            capabilities: Default::default(),
         };
         let ctx = build_context(
             EcosystemId::Npm,

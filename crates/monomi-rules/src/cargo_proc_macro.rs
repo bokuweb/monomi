@@ -51,6 +51,6 @@ impl Rule for ProcMacroCrate {
                       downstream crate; verify the macro body is benign"
                 .into(),
             defers_to_stage2: true,
-        }]
+            capabilities: Default::default(),        }]
     }
 }

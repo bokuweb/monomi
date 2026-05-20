@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::{artifact::ArtifactId, finding::Finding};
+use crate::{artifact::ArtifactId, capability::CapabilitySet, finding::Finding};
 
 pub const SCHEMA_VERSION: u32 = 1;
 
@@ -18,6 +18,11 @@ pub struct Stage1Result {
     pub findings: Vec<Finding>,
     pub score: u32,
     pub verdict: Stage1Verdict,
+    /// Union of every finding's capability label. Persisted in the
+    /// verdict so future scans of the same package can diff against
+    /// it (see milestone M8).
+    #[serde(default, skip_serializing_if = "CapabilitySet::is_empty")]
+    pub capabilities: CapabilitySet,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

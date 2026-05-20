@@ -75,7 +75,7 @@ impl Rule for PublishTimeHostility {
                         m.as_str()
                     ),
                     defers_to_stage2: true,
-                });
+                    capabilities: Default::default(),                });
             }
         }
         out

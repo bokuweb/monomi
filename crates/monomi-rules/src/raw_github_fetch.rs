@@ -10,9 +10,7 @@
 //! In **source**: High + defer to Stage 2 (some legit code
 //! pulls config from raw GH content).
 
-use monomi_core::{
-    AnalysisCtx, Category, EcosystemId, Finding, LifecycleKind, Location, Rule, Severity,
-};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, Finding, LifecycleKind, Location, Rule, Severity,};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -62,6 +60,7 @@ impl Rule for RawScmFetch {
                         m.as_str()
                     ),
                     defers_to_stage2: false,
+                    capabilities: [Capability::InstallTimeNetwork, Capability::NetHttp, Capability::LifecycleInstall].into_iter().collect(),
                 });
             }
         }
@@ -83,6 +82,7 @@ impl Rule for RawScmFetch {
                     excerpt: Some(m.as_str().to_string()),
                     message: format!("raw SCM URL `{}` in source", m.as_str()),
                     defers_to_stage2: true,
+                    capabilities: [Capability::NetHttp].into_iter().collect(),
                 });
             }
         }

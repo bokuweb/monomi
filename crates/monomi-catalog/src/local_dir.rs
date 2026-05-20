@@ -148,6 +148,7 @@ mod tests {
                 findings: vec![],
                 score: 0,
                 verdict: Stage1Verdict::Clean,
+            capabilities: Default::default(),
             },
             stage2: None,
             final_verdict: FinalVerdict {

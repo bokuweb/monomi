@@ -1,4 +1,4 @@
-use monomi_core::{AnalysisCtx, Category, EcosystemId, Finding, Location, Rule, Severity};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, Finding, Location, Rule, Severity};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -70,5 +70,6 @@ fn make_finding(path: String, hit: String) -> Finding {
         excerpt: Some(hit.clone()),
         message: format!("hardcoded cloud-metadata endpoint `{hit}` — credential exfil pattern"),
         defers_to_stage2: false,
+        capabilities: [Capability::NetHttp].into_iter().collect(),
     }
 }

@@ -1,6 +1,4 @@
-use monomi_core::{
-    AnalysisCtx, Category, EcosystemId, Entry, EntryKind, Finding, Location, Rule, Severity,
-};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, Entry, EntryKind, Finding, Location, Rule, Severity,};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -136,6 +134,7 @@ fn make_finding(path: String, excerpt: String) -> Finding {
              dynamic execution"
                 .into(),
         defers_to_stage2: false,
+        capabilities: [Capability::DynamicEval, Capability::EncodedPayload].into_iter().collect(),
     }
 }
 
