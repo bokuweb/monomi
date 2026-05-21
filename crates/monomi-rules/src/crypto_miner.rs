@@ -14,7 +14,7 @@
 //!   (95–106 chars from `[1-9A-HJ-NP-Za-km-z]`, starting with `4`
 //!   or `8` — Monero base58 standard / sub-address prefix)
 
-use monomi_core::{AnalysisCtx, Category, EcosystemId, Finding, Location, Rule, Severity};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, Finding, Location, Rule, Severity};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -117,5 +117,6 @@ fn make_finding(path: String, hit: String) -> Finding {
              ship miner code"
         ),
         defers_to_stage2: false,
+        capabilities: [Capability::CryptoMiner].into_iter().collect(),
     }
 }

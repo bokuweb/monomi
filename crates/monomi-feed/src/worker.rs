@@ -56,7 +56,15 @@ impl<E: Ecosystem> Worker<E> {
             return Ok(false);
         }
         let tar = self.eco.fetch(name, version).await?;
-        let verdict = monomi_pipeline::analyze(&self.eco, tar, adjudicator).await?;
+        // M8: feed always has a catalog, so it can supply a baseline.
+        let verdict = monomi_pipeline::analyze_with_catalog(
+            &self.eco,
+            tar,
+            adjudicator,
+            catalog,
+            monomi_pipeline::DEFAULT_BASELINE_WINDOW,
+        )
+        .await?;
         catalog.put_verdict(&verdict).await?;
         tracing::info!(
             eco = ?self.eco.id(),

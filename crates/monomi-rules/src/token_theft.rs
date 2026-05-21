@@ -9,9 +9,7 @@
 //! In **regular source**: High + defer to Stage 2 (a legitimate
 //! CI helper library can read these in *its* runtime by design).
 
-use monomi_core::{
-    AnalysisCtx, Category, EcosystemId, Finding, LifecycleKind, Location, Rule, Severity,
-};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, Finding, LifecycleKind, Location, Rule, Severity,};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -92,6 +90,7 @@ impl Rule for CiTokenTheft {
                         m.as_str()
                     ),
                     defers_to_stage2: false,
+                    capabilities: [Capability::EnvSecretLookup, Capability::InstallTimeNetwork, Capability::LifecycleInstall].into_iter().collect(),
                 });
             }
         }
@@ -115,6 +114,7 @@ impl Rule for CiTokenTheft {
                     excerpt: Some(m.as_str().to_string()),
                     message: format!("read of credential env / file `{}`", m.as_str()),
                     defers_to_stage2: true,
+                    capabilities: [Capability::EnvSecretLookup].into_iter().collect(),
                 });
             }
         }

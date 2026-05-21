@@ -19,9 +19,7 @@
 //!    scripts (e.g. Cyrillic `а` mixed with Latin), the classic
 //!    homoglyph trick. Defer to Stage 2.
 
-use monomi_core::{
-    AnalysisCtx, Category, EcosystemId, EntryKind, Finding, Location, Rule, Severity,
-};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, EntryKind, Finding, Location, Rule, Severity,};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -75,6 +73,7 @@ impl Rule for HiddenUnicode {
                               (rendered code does not match executed code)"
                         .into(),
                     defers_to_stage2: false,
+                    capabilities: [Capability::TrojanSource].into_iter().collect(),
                 });
             }
             if let Some(m) = ZERO_WIDTH_RE.find(text) {
@@ -96,6 +95,7 @@ impl Rule for HiddenUnicode {
                               identifiers or smuggle dual-token names"
                         .into(),
                     defers_to_stage2: true,
+                    capabilities: [Capability::TrojanSource].into_iter().collect(),
                 });
             }
 
@@ -119,6 +119,7 @@ impl Rule for HiddenUnicode {
                              impersonation (e.g. Cyrillic `а` vs Latin `a`)"
                         ),
                         defers_to_stage2: true,
+                        capabilities: [Capability::TrojanSource].into_iter().collect(),
                     });
                 }
             }

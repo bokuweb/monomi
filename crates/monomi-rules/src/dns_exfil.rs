@@ -11,9 +11,7 @@
 //! (DNS resolvers, network tools) do this; the LLM is positioned
 //! to decide.
 
-use monomi_core::{
-    AnalysisCtx, Category, EcosystemId, EntryKind, Finding, Location, Rule, Severity,
-};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, EntryKind, Finding, Location, Rule, Severity,};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -88,5 +86,6 @@ fn make_finding(path: String, hit: String) -> Finding {
              or DGA-style C2 shape"
             .into(),
         defers_to_stage2: true,
+        capabilities: [Capability::NetDns].into_iter().collect(),
     }
 }

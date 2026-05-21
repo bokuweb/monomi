@@ -79,6 +79,14 @@ enum Cmd {
         registry: Option<String>,
         #[arg(long)]
         publish_to: Option<PathBuf>,
+        /// Optional local catalog directory. When supplied, the M8
+        /// capability-diff pass runs against the previous versions
+        /// of this package recorded in the catalog (block-grade
+        /// "this version newly gained a dangerous capability"
+        /// signal). Skipped silently when the catalog has no
+        /// matching prior verdicts.
+        #[arg(long)]
+        catalog_dir: Option<PathBuf>,
     },
     /// Fetch `<name>@<version>` from crates.io and scan it.
     ScanCargo {
@@ -227,6 +235,7 @@ async fn real_main(cli: Cli) -> Result<ExitCode> {
             spec,
             registry,
             publish_to,
+            catalog_dir,
         } => {
             let (name, version) = parse_spec(&spec)?;
             let mut eco = NpmEcosystem::new();
@@ -236,7 +245,20 @@ async fn real_main(cli: Cli) -> Result<ExitCode> {
             let tar = monomi_core::Ecosystem::fetch(&eco, &name, &version)
                 .await
                 .with_context(|| format!("fetch {name}@{version}"))?;
-            let v = analyze(&eco, tar, adjudicator.as_ref()).await?;
+            let v = match catalog_dir {
+                Some(dir) => {
+                    let catalog = LocalDirCatalog::new(dir);
+                    monomi_pipeline::analyze_with_catalog(
+                        &eco,
+                        tar,
+                        adjudicator.as_ref(),
+                        &catalog,
+                        monomi_pipeline::DEFAULT_BASELINE_WINDOW,
+                    )
+                    .await?
+                }
+                None => analyze(&eco, tar, adjudicator.as_ref()).await?,
+            };
             publish_if_requested(&v, publish_to).await?;
             print_and_exit(v)
         }

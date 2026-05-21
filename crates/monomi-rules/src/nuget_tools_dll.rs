@@ -56,7 +56,7 @@ impl Rule for ToolsNativeBinary {
                      [Reflection.Assembly]::LoadFrom"
                 ),
                 defers_to_stage2: true,
-            });
+                capabilities: Default::default(),            });
         }
         out
     }

@@ -5,9 +5,7 @@
 //! pipes a URL into a shell during install is essentially never
 //! benign. Decisive Critical.
 
-use monomi_core::{
-    AnalysisCtx, Category, EcosystemId, Finding, LifecycleKind, Location, Rule, Severity,
-};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, Finding, LifecycleKind, Location, Rule, Severity,};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -56,6 +54,7 @@ impl Rule for LifecycleShellPipe {
                         life.name
                     ),
                     defers_to_stage2: false,
+                    capabilities: [Capability::InstallTimeShell, Capability::ProcSpawn, Capability::LifecycleInstall].into_iter().collect(),
                 });
             }
         }

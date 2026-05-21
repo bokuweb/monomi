@@ -110,5 +110,5 @@ fn make_finding(path: String, hit: String) -> Finding {
         excerpt: Some(hit.clone()),
         message: format!("payload smuggled into a metadata / docs file — {hit}"),
         defers_to_stage2: false,
-    }
+        capabilities: Default::default(),    }
 }

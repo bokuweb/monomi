@@ -253,6 +253,49 @@ install.
 
 **M6 — crates.io ecosystem (2–3 weeks).** Repeat the npm pattern.
 
+**M7 — Capability set extraction (1–2 weeks).** Rules emit a structured
+`Capability` alongside human-readable findings. The set is aggregated
+onto `Stage1Result` and persisted in the verdict. This is the
+foundation for M8: a stable, machine-comparable summary of *what a
+package can do* (lifecycle hooks, net.fetch/xhr, child_process,
+fs.read on sensitive paths, env bulk enumeration, dynamic eval,
+native binary, persistence writes, …). Initial set is enumerated in
+`monomi-core::capability`; rules opt in non-breakingly by attaching
+capabilities to the findings they already emit.
+
+**M8 — Version-over-version diff signals.** *DONE.* The current
+scan's `CapabilitySet` is diffed against two baselines fetched
+from the catalog — the immediate previous version, and the union
+of the last N (default 5) publish-time-ordered versions — and a
+post-Stage1 pass emits `NPM030 — capability newly introduced`
+(one finding per introduced capability). Severity scales with
+capability kind: `SelfDelete` / `CryptoMiner` / `WalletAccess` /
+`FsWritePersistence` are decisive on introduction; everything
+else defers to Stage 2 (avoids FPs from `node-gyp`,
+`prebuild-install`, Playwright/Prisma engine downloads, etc.).
+The pass abstains on poisoned (Malicious) baselines and on
+incomplete (pre-M7) baselines, recording a structured
+`DiffOutcome` in the verdict for coverage telemetry. The CLI
+opt-in is `monomi scan-npm ... --catalog-dir <dir>`; the feed
+daemon uses its existing catalog automatically. See `ISSUES.md`
+for items deferred from M8.
+
+**M9 — AST-grade source analysis (3–4 weeks).** Replace the regex-
+based detectors in `NPM002 / NPM013 / NPM023` with `swc_ecma_parser`
+call-graph extraction in `monomi-npm::analysis::js`. Constant-fold
+literal concatenation and `Buffer.from(.., 'base64')` one to two
+levels to defeat split-string evasion. Same shape for PyPI later
+via `rustpython-parser`. Output feeds the capability set from M7.
+
+**M10 — Maintainer + publish-cluster signals (1 week).** Extend
+`fetch_registry_metadata` consumers with two new rules:
+`NPM031 — publisher changed vs prior versions` (account-takeover
+shape), and `NPM032 — same maintainer published N other packages
+within window` (worm-style propagation, detected in `monomi-feed`
+with a sliding window over `_changes`). Both are high-precision and
+were observed in real-world npm incidents (e.g. Shai-Hulud, the
+2024 ctx/`@solana/...` takeovers).
+
 ## Open questions (decide before M3)
 
 - **Cost model for R2.** Public bucket = free reads, but anyone can

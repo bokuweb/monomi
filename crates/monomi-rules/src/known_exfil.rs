@@ -1,4 +1,4 @@
-use monomi_core::{AnalysisCtx, Category, EcosystemId, Finding, Location, Rule, Severity};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, Finding, Location, Rule, Severity};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -90,5 +90,6 @@ fn make_finding(path: String, host: String) -> Finding {
         excerpt: Some(host.clone()),
         message: format!("known exfil / OOB-callback endpoint `{host}`"),
         defers_to_stage2: false,
+        capabilities: [Capability::NetHttp].into_iter().collect(),
     }
 }

@@ -7,9 +7,7 @@
 //! to meet, no proximity slack. Catches the small-payload variant
 //! that hides in dozens of bytes.
 
-use monomi_core::{
-    AnalysisCtx, Category, EcosystemId, EntryKind, Finding, Location, Rule, Severity,
-};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, EntryKind, Finding, Location, Rule, Severity,};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -74,5 +72,6 @@ fn make_finding(path: String, hit: String) -> Finding {
         excerpt: Some(hit),
         message: "direct `eval`/`Function` of a base64-decoded payload".into(),
         defers_to_stage2: false,
+        capabilities: [Capability::DynamicEval, Capability::EncodedPayload].into_iter().collect(),
     }
 }

@@ -13,9 +13,7 @@
 //! High + defer to Stage 2: dynamic plugin loaders, transpilers,
 //! and test runners legitimately do this.
 
-use monomi_core::{
-    AnalysisCtx, Category, EcosystemId, EntryKind, Finding, Location, Rule, Severity,
-};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, EntryKind, Finding, Location, Rule, Severity,};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -88,5 +86,6 @@ fn make_finding(path: String, hit: String) -> Finding {
         excerpt: Some(hit),
         message: "dynamic `require()` / `import()` with non-literal argument".into(),
         defers_to_stage2: true,
+        capabilities: [Capability::DynamicRequire].into_iter().collect(),
     }
 }

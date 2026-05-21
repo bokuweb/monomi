@@ -93,7 +93,7 @@ impl Rule for FilesFieldMismatch {
                 extras.len()
             ),
             defers_to_stage2: true,
-        }]
+            capabilities: Default::default(),        }]
     }
 }
 

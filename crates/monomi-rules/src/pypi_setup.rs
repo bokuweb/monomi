@@ -43,7 +43,7 @@ impl Rule for SetupPyPresent {
                 excerpt: Some(truncate(&life.body, 240)),
                 message: format!("install-time entry `{}` present", life.name),
                 defers_to_stage2: false,
-            });
+                capabilities: Default::default(),            });
         }
         out
     }
@@ -103,7 +103,7 @@ impl Rule for SetupPyDangerousApi {
                         m.as_str()
                     ),
                     defers_to_stage2: true,
-                });
+                    capabilities: Default::default(),                });
             }
         }
         out

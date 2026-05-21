@@ -11,7 +11,8 @@
 //! better position than us to read the URL and decide.
 
 use monomi_core::{
-    AnalysisCtx, Category, EcosystemId, Finding, LifecycleKind, Location, Rule, Severity,
+    AnalysisCtx, Capability, Category, EcosystemId, Finding, LifecycleKind, Location, Rule,
+    Severity,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -69,6 +70,13 @@ impl Rule for InstallTimeOutboundHttp {
                         m.as_str()
                     ),
                     defers_to_stage2: true,
+                    capabilities: [
+                        Capability::InstallTimeNetwork,
+                        Capability::NetHttp,
+                        Capability::LifecycleInstall,
+                    ]
+                    .into_iter()
+                    .collect(),
                 });
             }
         }

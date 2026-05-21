@@ -1,6 +1,4 @@
-use monomi_core::{
-    AnalysisCtx, Category, EcosystemId, EntryKind, Finding, LifecycleKind, Location, Rule, Severity,
-};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, EntryKind, Finding, LifecycleKind, Location, Rule, Severity,};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -70,5 +68,6 @@ fn make_finding(path: String, hit: String) -> Finding {
         excerpt: Some(hit),
         message: "bulk enumeration of `process.env` — credential-harvesting pattern".into(),
         defers_to_stage2: true,
+        capabilities: [Capability::EnvBulkEnum].into_iter().collect(),
     }
 }

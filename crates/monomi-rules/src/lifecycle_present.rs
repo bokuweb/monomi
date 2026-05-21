@@ -1,5 +1,6 @@
 use monomi_core::{
-    AnalysisCtx, Category, EcosystemId, Finding, LifecycleKind, Location, Rule, Severity,
+    AnalysisCtx, Capability, Category, EcosystemId, Finding, LifecycleKind, Location, Rule,
+    Severity,
 };
 
 /// NPM001 — any install-time lifecycle script is present.
@@ -36,6 +37,7 @@ impl Rule for LifecyclePresent {
                 excerpt: Some(truncate(&entry.body, 240)),
                 message: format!("install-time lifecycle script `{}` present", entry.name),
                 defers_to_stage2: false,
+                capabilities: [Capability::LifecycleInstall].into_iter().collect(),
             });
         }
         out

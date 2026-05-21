@@ -1,4 +1,4 @@
-use monomi_core::{AnalysisCtx, Category, EcosystemId, Finding, Location, Rule, Severity};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, Finding, Location, Rule, Severity};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -84,5 +84,6 @@ fn make_finding(path: String, hit: String) -> Finding {
         excerpt: Some(hit.clone()),
         message: format!("sensitive-path literal `{hit}` (persistence / credential pattern)"),
         defers_to_stage2: true,
+        capabilities: [Capability::FsWritePersistence].into_iter().collect(),
     }
 }

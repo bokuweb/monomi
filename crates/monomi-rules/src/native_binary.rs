@@ -1,6 +1,4 @@
-use monomi_core::{
-    AnalysisCtx, Category, EcosystemId, EntryKind, Finding, Location, Rule, Severity,
-};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, EntryKind, Finding, Location, Rule, Severity,};
 
 /// NPM009 — bundled native binary / wasm not declared in `package.json`'s
 /// `bin` field. Legitimate native modules ship a build script or
@@ -48,6 +46,7 @@ impl Rule for NativeBinaryUndeclared {
                     entry.size
                 ),
                 defers_to_stage2: true,
+                capabilities: [Capability::NativeBinary].into_iter().collect(),
             });
         }
         out

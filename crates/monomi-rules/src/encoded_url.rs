@@ -7,7 +7,7 @@
 //! occurrence of these byte sequences in a published package is
 //! near-certainly a static-scanner evasion attempt.
 
-use monomi_core::{AnalysisCtx, Category, EcosystemId, Finding, Location, Rule, Severity};
+use monomi_core::{Capability, AnalysisCtx, Category, EcosystemId, Finding, Location, Rule, Severity};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -74,5 +74,6 @@ fn make_finding(path: String, hit: String) -> Finding {
              evasion, attempting to hide a URL"
             .into(),
         defers_to_stage2: false,
+        capabilities: [Capability::EncodedPayload].into_iter().collect(),
     }
 }
