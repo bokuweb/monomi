@@ -179,7 +179,14 @@ immediate **block** verdict; everything else defers to Stage 2.
 | **`NPM026`** | Critical | yes | Executable payload smuggled into README / LICENSE / CHANGELOG |
 | **`NPM027`** | Medium | defer | publish-time hook (`prepublishOnly` etc) contains network/shell — possible CI compromise |
 | **`NPM028`** | High/Med | defer | Time-bomb activation — `Date.now() > <future epoch>` or literal future date |
-| **`NPM030`** | Critical/High | mixed | Capability *newly introduced* vs prior versions (post-Stage1 diff against catalog history; decisive for `SelfDelete` / `CryptoMiner` / `WalletAccess` / `FsWritePersistence`, defers otherwise) |
+| **`NPM030`** | Critical/High | mixed | Capability *newly introduced* vs prior versions (post-Stage1 diff against catalog history; decisive for `SelfDelete` / `CryptoMiner` / `WalletAccess` / `FsWritePersistence` / `RegistryWrite` / `SecretMaterial`, defers otherwise) |
+| **`NPM033`** | High | defer | Cryptocurrency private-key / mnemonic / seed-phrase literal in source (`@solana/web3.js` 2024 hijack shape) |
+| **`NPM034`** | Critical | yes | npm CLI (`npm publish` / `npm token` / `npx`) invoked from a lifecycle script — worm-propagation shape (Shai-Hulud 2024) |
+| **`NPM035`** | High | defer | Linux privesc / recon path literal: `/etc/shadow`, `/proc/self/environ`, `/root/.ssh/`, … |
+| **`NPM036`** | High | defer | `fs.chmodSync(p, 0o755)` / `chmod +x` inside an install-time script — fetch-and-run shape |
+| **`CARGO005`** | High | defer | Proc-macro source uses `std::process::Command` — runs at compile time in every downstream crate |
+| **`CARGO006`** | High | defer | Proc-macro source uses `std::fs` / `OpenOptions` — compile-time file IO |
+| **`CARGO007`** | High | defer | Proc-macro source uses `reqwest` / `std::net::TcpStream` — compile-time network |
 | `CARGO001` | Info     | no        | `build.rs` present |
 | `CARGO002` | High     | defer     | build.rs uses `Command::new` etc. |
 | **`CARGO003`** | High | defer     | Crate is a proc-macro (compile-time code in every downstream crate) |

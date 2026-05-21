@@ -59,7 +59,9 @@ M8 itself but should be picked up next.
   - `DynamicEval` + `EncodedPayload` → Critical
   - `NativeBinary` + `LifecycleInstall` + `InstallTimeNetwork` → Critical
   - `FsReadSensitive` + `NetHttp` → Critical
-  Implement as a follow-up rule `NPM033` over the diff output.
+  Implement as a follow-up rule (note: `NPM033`/etc. IDs are
+  reserved by the CVE-retrospective cluster below — pick a fresh
+  slot when this lands).
 
 - **Grouped summary finding.** One `Finding` per introduced
   capability is fine for machine consumers (sakimori) but noisy
@@ -91,3 +93,126 @@ M8 itself but should be picked up next.
   again, downstream catalogs may have *partial* capability
   computation. Reserve a `capabilities_schema_version: u32` for
   the next bump.
+
+## CVE-retrospective rules (npm incident post-mortems)
+
+Mapping of past real-world npm supply-chain incidents to rules
+that, in retrospect, would have caught them at publish time.
+Ordered by post-mortem-precision (= "this signal alone would
+have flagged the malicious version, no FP context required").
+IDs are reserved here; some ship in this PR (marked **[M13a]**)
+and the rest land as part of M13.
+
+- **`NPM033` (cryptocurrency private-key / mnemonic / seed-phrase
+  literals)** **[M13a — shipped in this PR]**
+  Source mentions `*_PRIVATE_KEY`, `MNEMONIC`, `SEED_PHRASE`,
+  BIP-39 wordlist references, raw 0x-prefixed 64-hex literals
+  (Ethereum private key shape), Solana/Bitcoin private-key byte
+  patterns. Reference incidents: `@solana/web3.js` 2024
+  phishing-driven hijack, electron-native-notify, multiple
+  `bignum*` typosquats. Capability:
+  `EnvSecretLookup` + `WalletAccess`. Severity: Critical/defer.
+
+- **`NPM034` (npm CLI invocation inside install lifecycle)**
+  **[M13a — shipped in this PR]**
+  `npm publish` / `npm token` / `npm login` / `npm whoami` /
+  `npx` shelled out from a `preinstall` / `install` /
+  `postinstall` script. Reference incident: Shai-Hulud worm 2024
+  (compromised packages re-publish their owner's other
+  packages). Capability: `InstallTimeShell` + new
+  `RegistryWrite` capability. Severity: Critical/decisive.
+
+- **`NPM035` (Linux privesc / recon path literals)**
+  **[M13a — shipped in this PR]**
+  Source mentions `/etc/shadow`, `/etc/passwd`,
+  `/proc/self/environ`, `/proc/*/cmdline`, `/root/`, or
+  `/var/log/auth*`. Reference: generic recon shape seen across
+  miner/bot family payloads dropped by malicious npm packages.
+  Capability: `FsReadSensitive`. Severity: High/defer.
+
+- **`NPM036` (chmod-to-executable inside install lifecycle)**
+  **[M13a — shipped in this PR]**
+  `fs.chmodSync(p, 0o755)` / `chmod +x` shelled out from a
+  lifecycle script, especially when `p` was the target of a
+  preceding `fs.writeFile` or download. Reference: every
+  fetch-and-run shape (ua-parser-js, coa/rc 2021).
+  Capability: `InstallTimeShell` + `NativeBinary`. Severity:
+  High/defer.
+
+- **`NPM037` (runtime branches on `require.main.filename` /
+  `process.mainModule`)**
+  Source reads `require.main.filename` / `process.mainModule`
+  and string-matches its value against a literal package name
+  list. Reference incident: event-stream / flatmap-stream 2018,
+  payload only fired when consumed by `copay-dash`. Capability:
+  `DynamicEval`. Severity: High/defer.
+
+- **`NPM038` (`require.cache[...]` mutation / module hijacking)**
+  Source writes to `require.cache[...]` or `delete require.cache[...]`
+  with a non-literal key. Module-substitution attack.
+  Capability: `DynamicRequire` + `DynamicEval`. Severity:
+  High/defer.
+
+- **`NPM039` (mass file deletion shape, beyond
+  `fs.unlinkSync(__filename)`)**
+  `fs.unlink*`/`fs.rm*`/`rimraf` over a *traversal*
+  (`os.homedir()` + `readdirSync`, `process.cwd()` + glob,
+  root-anchored paths). Reference: node-ipc/peacenotwar 2022.
+  Capability: `FsWritePersistence` (subsumed) + new
+  `DestructiveFs` capability. Severity: Critical/decisive.
+
+- **`NPM040` (tarball ↔ git-tag divergence)** — see M12.
+
+- **`NPM041` (dataflow-lite token taint)** — see M15.
+
+- **`NPM042` (maintainer email-domain expiry)** — see M16.
+
+- **`NPM043` (version inflation / dependency confusion)**
+  Published version is dramatically higher than the prior
+  version sequence (e.g. `0.4.2 → 99.99.99`). Reference:
+  Alex Birsan 2021 dependency-confusion paper, ongoing daily
+  attacks against private-registry name shadows. Severity:
+  Medium/defer.
+
+- **`NPM044` (`process.dlopen` / `process.binding` / V8 internals)**
+  Direct V8 internal access. Extremely unusual outside
+  Node-core-replacement libraries. Severity: High/defer.
+
+- **`NPM045` (geolocation-gated destructive branches)**
+  Source reads `process.env.LANG` / `Intl.DateTimeFormat`
+  resolved locale / `dns.lookup`-derived IP and conditionally
+  enters a destructive code path. Reference: node-ipc
+  protestware. Severity: Critical/defer.
+
+- **`NPM046` (SetUID / SetGID binary in tarball)**
+  Any file in the tarball whose tar header carries mode bits
+  `0o4000`/`0o2000`. Severity: Critical/decisive.
+
+- **`NPM047` (`crypto.createDecipheriv` with hardcoded key)**
+  `createDecipheriv` / `createDecipher` call whose key argument
+  is a literal `Buffer.from(<hex/base64>)`. Pairs with
+  `NPM005`/`NPM020`. Severity: High/defer.
+
+- **`NPM048` (maintainer recently added, < 14 d before publish)**
+  Already partially covered by `NPM016`; this variant looks at
+  the *maintainer-add* timestamp from `/-/user/`, not the
+  package-create timestamp. Severity: Medium/defer.
+
+- **`NPM049` (CI-only payload)**
+  Conditional execution gated by `process.env.CI` /
+  `GITHUB_ACTIONS` / `JENKINS_URL` / `BUILD_ID` and reaches
+  network/secret-grab. Severity: High/defer.
+
+## Capability vocabulary follow-ups
+
+The M13a cluster introduces two new capabilities not in M7's set:
+
+- `RegistryWrite` — code performs (or shells out to) a
+  registry-side write: `npm publish`, `npm token create`,
+  `cargo publish`, `twine upload`. Decisive on introduction
+  (added to `is_decisive_on_introduction`).
+- `DestructiveFs` — mass file deletion shape. Decisive on
+  introduction. To be added with `NPM039`.
+
+These extend `Capability` (additive — old verdicts still
+deserialize via `serde(default)`).

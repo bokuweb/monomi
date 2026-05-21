@@ -86,6 +86,15 @@ pub enum Capability {
     NativeBinary,
 
     // ---- domain-specific ----
+    /// Code performs or shells out to a registry-side write
+    /// (`npm publish`, `npm token`, `cargo publish`, `twine upload`).
+    /// Worm-propagation shape: a compromised package's lifecycle
+    /// re-publishes the owner's other packages (Shai-Hulud 2024).
+    RegistryWrite,
+    /// References cryptocurrency private-key, mnemonic, or
+    /// seed-phrase shapes. Reference: `@solana/web3.js` 2024 hijack,
+    /// electron-native-notify, bignum-family typosquats.
+    SecretMaterial,
     /// References cryptocurrency wallet artifacts (Exodus, MetaMask
     /// extension id, `wallet.dat`, seed phrases, …).
     WalletAccess,
@@ -111,12 +120,12 @@ impl Capability {
     pub fn is_decisive_on_introduction(self) -> bool {
         matches!(
             self,
-            Capability::InstallTimeNetwork
-                | Capability::InstallTimeShell
-                | Capability::SelfDelete
+            Capability::SelfDelete
                 | Capability::CryptoMiner
                 | Capability::WalletAccess
                 | Capability::FsWritePersistence
+                | Capability::RegistryWrite
+                | Capability::SecretMaterial
         )
     }
 }

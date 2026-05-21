@@ -11,6 +11,8 @@ mod bundled_deps;
 mod cargo_build_rs;
 mod cargo_include_payload;
 mod cargo_proc_macro;
+mod cargo_proc_macro_source;
+mod chmod_executable;
 mod cloud_metadata;
 mod corpus;
 mod crypto_miner;
@@ -31,11 +33,14 @@ mod native_binary;
 mod nuget_install_ps1;
 mod nuget_tools_dll;
 mod persistence_paths;
+mod privesc_paths;
 mod publish_time;
 mod pypi_setup;
 mod raw_github_fetch;
 mod recency;
+mod registry_write;
 mod runner;
+mod secret_material;
 mod self_delete;
 mod shell_pipe;
 mod time_bomb;
@@ -47,6 +52,8 @@ pub use bundled_deps::BundleDependenciesDeclared;
 pub use cargo_build_rs::{BuildRsDangerousApi, BuildRsPresent};
 pub use cargo_include_payload::BuildRsIncludePayload;
 pub use cargo_proc_macro::ProcMacroCrate;
+pub use cargo_proc_macro_source::{ProcMacroFsAccess, ProcMacroNetAccess, ProcMacroProcessSpawn};
+pub use chmod_executable::InstallTimeChmodExec;
 pub use cloud_metadata::CloudMetadataLiteral;
 pub use corpus::default_corpus;
 pub use crypto_miner::CryptoMinerLiteral;
@@ -67,11 +74,14 @@ pub use native_binary::NativeBinaryUndeclared;
 pub use nuget_install_ps1::{InstallPs1DangerousApi, InstallPs1Present};
 pub use nuget_tools_dll::ToolsNativeBinary;
 pub use persistence_paths::PersistencePathLiteral;
+pub use privesc_paths::PrivescPathLiteral;
 pub use publish_time::PublishTimeHostility;
 pub use pypi_setup::{SetupPyDangerousApi, SetupPyPresent};
 pub use raw_github_fetch::RawScmFetch;
 pub use recency::RecencySignals;
+pub use registry_write::InstallTimeRegistryWrite;
 pub use runner::{run, RunOutcome, RULESET_VERSION};
+pub use secret_material::SecretMaterialLiteral;
 pub use self_delete::SelfDeletePayload;
 pub use shell_pipe::LifecycleShellPipe;
 pub use time_bomb::TimeBombActivation;
@@ -113,11 +123,19 @@ pub fn default_ruleset() -> Vec<Box<dyn Rule>> {
         Box::new(MetadataPayloadSmuggling),
         Box::new(PublishTimeHostility),
         Box::new(TimeBombActivation),
+        // M13a — CVE-retrospective cluster
+        Box::new(SecretMaterialLiteral),
+        Box::new(InstallTimeRegistryWrite),
+        Box::new(InstallTimeChmodExec),
         // cargo-only
         Box::new(BuildRsPresent),
         Box::new(BuildRsDangerousApi),
         Box::new(ProcMacroCrate),
         Box::new(BuildRsIncludePayload),
+        // M11 — proc-macro source surface
+        Box::new(ProcMacroProcessSpawn),
+        Box::new(ProcMacroFsAccess),
+        Box::new(ProcMacroNetAccess),
         // pypi-only
         Box::new(SetupPyPresent),
         Box::new(SetupPyDangerousApi),
@@ -129,5 +147,6 @@ pub fn default_ruleset() -> Vec<Box<dyn Rule>> {
         Box::new(CloudMetadataLiteral),
         Box::new(KnownExfilEndpoint),
         Box::new(PersistencePathLiteral),
+        Box::new(PrivescPathLiteral),
     ]
 }
