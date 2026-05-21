@@ -296,6 +296,76 @@ with a sliding window over `_changes`). Both are high-precision and
 were observed in real-world npm incidents (e.g. Shai-Hulud, the
 2024 ctx/`@solana/...` takeovers).
 
+**M11 — Cargo proc-macro source surface (`CARGO005`–`CARGO009`).**
+Proc-macros execute at compile time for every downstream crate
+that uses them — strictly broader attack surface than `build.rs`,
+but currently only the *existence* of a proc-macro crate is
+flagged (`CARGO003`). M11 walks the proc-macro crate's `src/`
+and applies the same capability vocabulary used for npm:
+
+- `CARGO005` — proc-macro body uses `std::process::Command`
+  / `std::os::unix::process` (`ProcSpawn`)
+- `CARGO006` — proc-macro body uses `std::fs` /
+  `OpenOptions::new()` for read or write
+  (`FsRead` / `FsWritePersistence`)
+- `CARGO007` — proc-macro body imports `reqwest` / `ureq` /
+  `hyper` / `std::net::TcpStream` (`NetHttp` /
+  `NetRawSocket`) — high-value: the build.rs equivalent is
+  audited, the proc-macro equivalent is not
+- `CARGO008` — `include_bytes!` / `include_str!` in
+  proc-macro body, not just `build.rs` (`EncodedPayload`)
+- `CARGO009` — proc-macro body uses `syn::parse_str` over a
+  non-literal input (`DynamicEval`-equivalent)
+
+Capability emission feeds straight back into M8's NPM030
+ecosystem-agnostic diff rule.
+
+**M12 — Tarball ↔ git-tag divergence (`NPM040`).** For npm
+packages with a `repository.url` field that points to a public
+GitHub repo, fetch the tag matching the published version via
+`git ls-remote` + GitHub's raw API, then diff the tarball's
+non-`dist/` source files against the repo at that tag. Common
+malicious shape: `dist/` is minified, committed only to npm,
+contains code not present in the repo. Decisive when the diff
+includes any `dist/` file with executable code and the repo has
+no corresponding source. Starjacking variant: when
+`package.json`'s `repository.url` claims a repo whose own
+`package.json` declares a different name, flag immediately.
+
+**M13 — CVE-retrospective rules (`NPM033`–`NPM039`).** New rule
+cluster derived from the post-mortems of major real-world npm
+incidents (event-stream, ua-parser-js, ctx, node-ipc, Shai-Hulud,
+@solana/web3.js, electron-native-notify, …). See `ISSUES.md`
+§"CVE-retrospective rules" for the full mapping. The highest-
+priority subset (private-key/mnemonic literals; npm CLI invoked
+from install scripts; Linux privesc-recon paths;
+`fs.chmodSync(..., 0o755)` on a freshly-downloaded file; runtime
+branch on `require.main.filename`; `delete require.cache[...]`
+module hijacking) ships as part of the M7+M8 follow-on.
+
+**M14 — Provenance & attestation (`NPM050`+).**
+- Verify npm's published SLSA provenance attestations
+  (`registry.npmjs.org/<pkg>/-/<pkg>-<ver>.json` → `dist.attestations`).
+  Treat missing provenance on a package that *previously* had it
+  as a regression signal.
+- Sign monomi's own verdicts so downstream consumers (sakimori,
+  CI gates) can verify the verdict was produced by a trusted
+  analyzer and has not been tampered with in transit.
+
+**M15 — Dataflow-lite token taint (`NPM041`).** With the swc AST
+from M9, do a 1–2 hop taint analysis: `process.env.NPM_TOKEN` /
+`fs.readFileSync('~/.npmrc')` → any `http(s)`/`fetch`/`net`
+sink, including through obvious destructuring and template
+literal interpolation. Most competitors only pattern-match the
+two ends; the join is the precision signal.
+
+**M16 — Maintainer email-domain expiry (`NPM042`).** ctx-style
+account takeover: a maintainer's email domain expired and the
+attacker re-registered it. For each maintainer listed in
+`registry.npmjs.org/<pkg>`, DNS-MX-check the domain. Expired or
+parked domains on any maintainer is a high-signal precondition
+for hijack and must publish before the next version does.
+
 ## Open questions (decide before M3)
 
 - **Cost model for R2.** Public bucket = free reads, but anyone can
