@@ -263,16 +263,22 @@ native binary, persistence writes, …). Initial set is enumerated in
 `monomi-core::capability`; rules opt in non-breakingly by attaching
 capabilities to the findings they already emit.
 
-**M8 — Version-over-version diff signals (2 weeks).** The highest-
-precision signal we don't yet exploit: an established package
-*newly* gains a capability. Compare the current scan's
-`CapabilitySet` against the catalog's previous-version verdict
-(`monomi-catalog` already keys by `<eco>/<name>/<version>.json`)
-and emit `NPM030 — capability newly introduced`. Severity scales
-with capability kind: new `LifecyclePostInstall + NetFetch + FsRead`
-is decisive; a single new generic capability defers. This rule fires
-*only when* a prior verdict exists, so behavior on cold cache is
-unchanged.
+**M8 — Version-over-version diff signals.** *DONE.* The current
+scan's `CapabilitySet` is diffed against two baselines fetched
+from the catalog — the immediate previous version, and the union
+of the last N (default 5) publish-time-ordered versions — and a
+post-Stage1 pass emits `NPM030 — capability newly introduced`
+(one finding per introduced capability). Severity scales with
+capability kind: `SelfDelete` / `CryptoMiner` / `WalletAccess` /
+`FsWritePersistence` are decisive on introduction; everything
+else defers to Stage 2 (avoids FPs from `node-gyp`,
+`prebuild-install`, Playwright/Prisma engine downloads, etc.).
+The pass abstains on poisoned (Malicious) baselines and on
+incomplete (pre-M7) baselines, recording a structured
+`DiffOutcome` in the verdict for coverage telemetry. The CLI
+opt-in is `monomi scan-npm ... --catalog-dir <dir>`; the feed
+daemon uses its existing catalog automatically. See `ISSUES.md`
+for items deferred from M8.
 
 **M9 — AST-grade source analysis (3–4 weeks).** Replace the regex-
 based detectors in `NPM002 / NPM013 / NPM023` with `swc_ecma_parser`

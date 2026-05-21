@@ -10,8 +10,15 @@ use monomi_core::{
     RegistryMetadata, Stage1Result, Stage1Verdict, Stage2Result, Stage2Verdict, Status, Tarball,
     Verdict, VerdictSource, SCHEMA_VERSION,
 };
+use monomi_catalog::CatalogReader;
 use monomi_llm::{build_context, Adjudicator, Stage2Context};
 use monomi_rules::{default_corpus, default_ruleset, run, RULESET_VERSION};
+
+pub mod diff;
+pub mod history;
+
+pub use diff::CapabilityDiffInput;
+pub use history::DEFAULT_BASELINE_WINDOW;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PipelineError {
@@ -22,10 +29,53 @@ pub enum PipelineError {
 pub type Result<T> = std::result::Result<T, PipelineError>;
 
 /// Run Stage 1 + Stage 2 + verdict-merge for a fetched tarball.
+/// Backwards-compatible wrapper around `analyze_with_diff` with no
+/// capability-diff baseline.
 pub async fn analyze<E: Ecosystem>(
     eco: &E,
     tar: Tarball,
     adjudicator: &dyn Adjudicator,
+) -> Result<Verdict> {
+    analyze_with_diff(eco, tar, adjudicator, &CapabilityDiffInput::default()).await
+}
+
+/// Convenience wrapper that resolves the capability-diff baseline
+/// against a catalog and then calls `analyze_with_diff`. The cost is
+/// one extra `fetch_registry_metadata` call (the inner `analyze`
+/// repeats it); refactoring `analyze` to accept a prefetched
+/// manifest/registry is tracked in ISSUES.md.
+pub async fn analyze_with_catalog<E: Ecosystem>(
+    eco: &E,
+    tar: Tarball,
+    adjudicator: &dyn Adjudicator,
+    catalog: &dyn CatalogReader,
+    window: usize,
+) -> Result<Verdict> {
+    let manifest = eco.parse_manifest(&tar)?;
+    let registry = eco
+        .fetch_registry_metadata(&manifest.name, &manifest.version)
+        .await
+        .unwrap_or(None);
+    let input = history::resolve(
+        catalog,
+        eco.id(),
+        &manifest.name,
+        &manifest.version,
+        registry.as_ref(),
+        window,
+    )
+    .await;
+    analyze_with_diff(eco, tar, adjudicator, &input).await
+}
+
+/// Same as `analyze` but also runs the M8 capability-diff pass
+/// against the provided baseline(s). Callers typically use
+/// `history::resolve` to populate `diff_input` from a `CatalogReader`.
+pub async fn analyze_with_diff<E: Ecosystem>(
+    eco: &E,
+    tar: Tarball,
+    adjudicator: &dyn Adjudicator,
+    diff_input: &CapabilityDiffInput,
 ) -> Result<Verdict> {
     let manifest = eco.parse_manifest(&tar)?;
     let lifecycle = eco.lifecycle_entrypoints(&tar, &manifest)?;
@@ -62,6 +112,12 @@ pub async fn analyze<E: Ecosystem>(
 
     let rules = default_ruleset();
     let outcome = run(&rules, &ctx);
+    let mut stage1 = outcome.stage1;
+
+    // M8: capability-diff pass runs after rules so it sees the full
+    // aggregated capability set. Pure function — all I/O already
+    // happened in `history::resolve` upstream.
+    diff::apply(&mut stage1, diff_input);
 
     let stage2 = maybe_stage2(
         adjudicator,
@@ -69,10 +125,10 @@ pub async fn analyze<E: Ecosystem>(
         &manifest,
         &lifecycle,
         registry.as_ref(),
-        &outcome.stage1,
+        &stage1,
     )
     .await;
-    let final_verdict = merge(&outcome.stage1, stage2.as_ref());
+    let final_verdict = merge(&stage1, stage2.as_ref());
 
     Ok(Verdict {
         schema_version: SCHEMA_VERSION,
@@ -80,7 +136,7 @@ pub async fn analyze<E: Ecosystem>(
         analyzed_at: Utc::now(),
         analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
         ruleset_version: RULESET_VERSION.to_string(),
-        stage1: outcome.stage1,
+        stage1,
         stage2,
         final_verdict,
     })
@@ -210,6 +266,8 @@ mod tests {
             score: 0,
             verdict: v,
             capabilities: Default::default(),
+            capabilities_complete: true,
+            diff_outcome: None,
         }
     }
 

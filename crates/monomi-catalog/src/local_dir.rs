@@ -149,7 +149,9 @@ mod tests {
                 score: 0,
                 verdict: Stage1Verdict::Clean,
             capabilities: Default::default(),
-            },
+                capabilities_complete: true,
+            diff_outcome: None,
+        },
             stage2: None,
             final_verdict: FinalVerdict {
                 status: Status::Clean,

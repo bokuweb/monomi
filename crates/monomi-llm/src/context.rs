@@ -244,6 +244,8 @@ mod tests {
             score: 5,
             verdict: Stage1Verdict::Suspicious,
             capabilities: Default::default(),
+            capabilities_complete: true,
+            diff_outcome: None,
         };
         let ctx = build_context(
             EcosystemId::Npm,
@@ -276,6 +278,8 @@ mod tests {
             score: 0,
             verdict: Stage1Verdict::Clean,
             capabilities: Default::default(),
+            capabilities_complete: true,
+            diff_outcome: None,
         };
         let ctx = build_context(
             EcosystemId::Npm,

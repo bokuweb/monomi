@@ -4,6 +4,7 @@
 
 pub mod artifact;
 pub mod capability;
+pub mod diff;
 pub mod ecosystem;
 pub mod entry;
 pub mod error;
@@ -14,6 +15,7 @@ pub mod verdict;
 
 pub use artifact::{ArtifactId, EcosystemId, HashAlgo, Integrity};
 pub use capability::{Capability, CapabilitySet};
+pub use diff::{BaselineStrategy, CapabilityBaseline};
 pub use ecosystem::{
     Ecosystem, LifecycleEntry, LifecycleKind, PackageDiff, RegistryMetadata, Tarball,
 };
@@ -23,6 +25,6 @@ pub use finding::{Category, Finding, Location, Severity};
 pub use manifest::Manifest;
 pub use rule::{AnalysisCtx, Corpus, Rule};
 pub use verdict::{
-    FinalVerdict, RecommendedAction, Stage1Result, Stage1Verdict, Stage2Result, Stage2Verdict,
-    Status, Verdict, VerdictSource, SCHEMA_VERSION,
+    DiffOutcome, FinalVerdict, RecommendedAction, Stage1Result, Stage1Verdict, Stage2Result,
+    Stage2Verdict, Status, Verdict, VerdictSource, SCHEMA_VERSION,
 };

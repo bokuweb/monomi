@@ -57,6 +57,12 @@ pub fn run(rules: &[Box<dyn Rule>], ctx: &AnalysisCtx<'_>) -> RunOutcome {
             score,
             verdict,
             capabilities,
+            // M7+ analyzer: capabilities were actually computed.
+            // The M8 diff pass keys off this to refuse to compare
+            // against pre-M7 verdicts (where the field defaults to
+            // `false` on deserialize).
+            capabilities_complete: true,
+            diff_outcome: None,
         },
     }
 }
