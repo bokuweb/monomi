@@ -236,3 +236,110 @@ The M13a/b clusters introduce these new capabilities not in M7's set:
 
 These extend `Capability` (additive — old verdicts still
 deserialize via `serde(default)`).
+
+## Differentiation & accuracy roadmap
+
+Brain-dump of where monomi can push past Socket/Snyk/Phylum
+and where the current ruleset has known FN/FP gaps. Ordered by
+expected impact-per-effort. Items marked **[OWNER: user]** are
+explicitly reserved for the maintainer — do not auto-implement.
+
+### High priority — accuracy / coverage
+
+- **`NPM041` dataflow-lite token taint.** **[shipped]**
+  `EnvExfilFlow`: bulk `process.env` consumer (`Object.keys/entries/
+  values`, `JSON.stringify`, spread, `for...in`, destructure,
+  alias, computed-key bracket access) paired with a network/exec
+  sink in the same body. Critical+decisive in install lifecycle,
+  High+defer in regular source. Two-prong keeps dotenv-style
+  config libraries (bulk env, no network) and thin HTTP clients
+  (network, no bulk env) out of the FP set.
+
+- **Real-tarball fixture corpus.** Today everything is synthetic.
+  Pull a curated set of historically-malicious tarballs from
+  `replicate.npmjs.com` archive (still publicly served):
+  `event-stream@3.3.6`, `flatmap-stream@0.1.1`,
+  `node-ipc@10.1.1`/`10.1.2`, `ua-parser-js@0.7.29`,
+  `coa@2.0.3`, `rc@1.2.9`, recent Shai-Hulud `nx@*` samples,
+  `@solana/web3.js@1.95.5`/`1.95.6`. Replay test enforces "rule
+  R caught known incident I" at CI time so refactors can't
+  silently regress detection.
+
+- **AST-confirm pass for High/defer rules.** Regex-only matching
+  produces FPs in comments / string literals and FNs in minified
+  payloads (`;fs.rmSync(...` style). Run `oxc_parser` on JS
+  source as a second pass for the rules where confidence matters
+  most (NPM005, NPM017, NPM018, NPM038, NPM039). If AST confirms
+  the regex hit isn't inside a comment/string, bump severity by
+  one notch. If the rule fired *only* via regex and AST disagrees,
+  drop the finding entirely. Cheap, optional, big precision win.
+
+- **Minify / obfuscation scoring → new capability
+  `MinifiedNoSource`.** Aggregate per-file: max line length,
+  identifier entropy, `\x`/`\u` escape ratio, mean comment
+  density. When `dist/` files score high and no `*.map` or
+  matching repo source is present, emit `Capability::
+  MinifiedNoSource`. This is plan.md threat-model item 5
+  ("Dist/source divergence"), currently unimplemented.
+
+- **`NPM048` maintainer-add timestamp.** `NPM016` looks at
+  package age. `NPM048` looks at the maintainer-add timestamp
+  from npm's `/-/user/<name>` — catches "established package,
+  new maintainer added 3 days ago, immediately publishes". Pairs
+  with `RegistryWrite` for the Shai-Hulud worm-takeover shape.
+
+### Medium priority — distribution & integration
+
+- **CycloneDX VEX output.** Convert `Verdict` →
+  CycloneDX-VEX (`affected` / `not_affected` /
+  `under_investigation`). Lets `grype` / `trivy` / GitHub
+  Dependabot consume monomi verdicts directly. `monomi vex
+  <integrity>` subcommand.
+
+- **`monomi explain <integrity>`.** Render the verdict as a
+  human-readable narrative: for each finding, the CVE-retrospective
+  reference incident, what the rule actually matched, why it's
+  block-grade. Socket's reasoning is proprietary; ours can
+  reference public post-mortems.
+
+- **`monomi diff <name>@v1 <name>@v2`.** Surface the capability
+  and finding delta between two versions on the CLI, mirroring
+  what M8's NPM030 computes internally. Useful for "I'm bumping
+  axios 1.6.0 → 1.7.0, what changed?" audits.
+
+### Medium priority — accuracy infrastructure
+
+- **PyPI wheel `RECORD` divergence.** plan.md M3 item.
+  `*.dist-info/RECORD` carries declared hashes; compare to
+  actual file bytes and emit a finding on mismatch. Tampering
+  signal that wheel-based PyPI attacks have used.
+
+- **Continuous feed for cargo / pypi / nuget.** Today only npm
+  has `_changes`. Add:
+  - cargo: `https://crates.io/api/v1/summary` polling +
+    `index.crates.io` git pulls
+  - pypi: `pypi.org/rss/updates.xml` + `pypi-json-load` BigQuery
+    fallback
+  - nuget: `catalog/index.json` cursor
+  Each is ~100 LOC reusing the npm `changes.rs` retry/backoff
+  pattern.
+
+- **Verdict signing (sigstore).** Sign each verdict JSON with
+  Fulcio-issued cert. Consumers verify "monomi the binary at
+  commit X saw these bytes Y" without trusting our R2 bucket.
+  Required if we ever want third parties to mirror the catalog.
+
+### Reserved / lower priority
+
+- **sakimori static × dynamic join. [OWNER: user]** Cross-repo
+  work in `bokuweb/sakimori`; do not auto-implement here.
+  monomi side just needs to keep `Verdict` schema stable so
+  sakimori can join on `integrity` at install time.
+
+- **Go modules / Maven / RubyGems.** Same `Ecosystem` trait
+  pattern. Defer until npm/cargo/pypi/nuget are saturated.
+
+- **Combination-based severity bumps.** Already in the
+  "Deferred from M8" section above — pairs like
+  `EnvSecretLookup + NetHttp` should be Critical even though
+  neither is decisive alone.

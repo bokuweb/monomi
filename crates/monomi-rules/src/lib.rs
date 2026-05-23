@@ -21,6 +21,7 @@ mod destructive_fs;
 mod dns_exfil;
 mod dynamic_require;
 mod encoded_url;
+mod env_exfil_flow;
 mod env_harvest;
 mod eval_atob;
 mod eval_blob;
@@ -67,6 +68,7 @@ pub use destructive_fs::DestructiveFsTraversal;
 pub use dns_exfil::DnsExfil;
 pub use dynamic_require::DynamicRequire;
 pub use encoded_url::EncodedUrlBytes;
+pub use env_exfil_flow::EnvExfilFlow;
 pub use env_harvest::EnvHarvest;
 pub use eval_atob::EvalAtobChain;
 pub use eval_blob::EvalLargeBlob;
@@ -137,6 +139,8 @@ pub fn default_ruleset() -> Vec<Box<dyn Rule>> {
         Box::new(SecretMaterialLiteral),
         Box::new(InstallTimeRegistryWrite),
         Box::new(InstallTimeChmodExec),
+        // M13c — dataflow-lite (NPM041)
+        Box::new(EnvExfilFlow),
         // M13b — CVE-retrospective cluster (continued: NPM037-046)
         Box::new(MainModuleBranch),
         Box::new(RequireCacheMutation),
