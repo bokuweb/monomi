@@ -1128,3 +1128,69 @@ fn http_client_without_bulk_env_does_not_fire_npm041() {
     let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
     assert!(!ids.contains(&"NPM041"), "false positive: {ids:?}");
 }
+
+// --- NPM050 minified-no-source --------------------------------------
+
+fn minified_blob() -> String {
+    let chunk = "function _(a,b,c){return a+b*c}var x=_(1,2,3);";
+    let mut s = String::new();
+    while s.len() < 2048 {
+        s.push_str(chunk);
+    }
+    s
+}
+
+#[test]
+fn minified_dist_without_map_fires_npm050() {
+    let pkg = r#"{ "name": "no-source", "version": "0.0.1", "main": "dist/index.js" }"#;
+    let blob = minified_blob();
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/dist/index.js", blob.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"NPM050"), "expected NPM050, got {ids:?}");
+}
+
+#[test]
+fn minified_dist_with_companion_map_does_not_fire_npm050() {
+    let pkg = r#"{ "name": "with-map", "version": "0.0.1", "main": "dist/index.js" }"#;
+    let blob = minified_blob();
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/dist/index.js", blob.as_bytes()),
+        ("package/dist/index.js.map", b"{\"version\":3,\"sources\":[]}"),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(!ids.contains(&"NPM050"), "false positive: {ids:?}");
+}
+
+#[test]
+fn minified_dist_with_readable_ts_companion_does_not_fire_npm050() {
+    let pkg = r#"{ "name": "with-src", "version": "0.0.1", "main": "dist/index.js" }"#;
+    let blob = minified_blob();
+    let readable = "export function add(a: number, b: number): number {\n  return a + b;\n}\n";
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/dist/index.js", blob.as_bytes()),
+        ("package/src/index.ts", readable.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(!ids.contains(&"NPM050"), "false positive: {ids:?}");
+}
+
+#[test]
+fn readable_dist_does_not_fire_npm050() {
+    let pkg = r#"{ "name": "readable", "version": "0.0.1", "main": "dist/index.js" }"#;
+    let src = "module.exports = function add(a, b) {\n  return a + b;\n};\n";
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/dist/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(!ids.contains(&"NPM050"), "false positive: {ids:?}");
+}

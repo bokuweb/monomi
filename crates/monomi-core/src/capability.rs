@@ -118,6 +118,11 @@ pub enum Capability {
     /// `process._linkedBinding`). Extremely rare outside Node-core
     /// replacements.
     V8Internal,
+    /// Package ships minified `dist/` (or equivalent) JS with no
+    /// companion `*.map` and no readable original — the running
+    /// code cannot be audited before install. plan.md threat-model
+    /// item 5.
+    MinifiedNoSource,
 }
 
 /// Canonical aggregation of capabilities. `BTreeSet` is used because

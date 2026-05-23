@@ -32,6 +32,7 @@ mod known_exfil;
 mod lifecycle_present;
 mod main_module_branch;
 mod metadata_smuggling;
+mod minified_no_source;
 mod native_binary;
 mod nuget_install_ps1;
 mod nuget_tools_dll;
@@ -79,6 +80,7 @@ pub use known_exfil::KnownExfilEndpoint;
 pub use lifecycle_present::LifecyclePresent;
 pub use main_module_branch::MainModuleBranch;
 pub use metadata_smuggling::MetadataPayloadSmuggling;
+pub use minified_no_source::MinifiedNoSource;
 pub use native_binary::NativeBinaryUndeclared;
 pub use nuget_install_ps1::{InstallPs1DangerousApi, InstallPs1Present};
 pub use nuget_tools_dll::ToolsNativeBinary;
@@ -147,6 +149,8 @@ pub fn default_ruleset() -> Vec<Box<dyn Rule>> {
         Box::new(DestructiveFsTraversal),
         Box::new(V8InternalAccess),
         Box::new(SetuidBinaryInTarball),
+        // plan.md threat-model item 5 — source divergence
+        Box::new(MinifiedNoSource),
         // cargo-only
         Box::new(BuildRsPresent),
         Box::new(BuildRsDangerousApi),

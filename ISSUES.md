@@ -280,12 +280,14 @@ explicitly reserved for the maintainer — do not auto-implement.
   drop the finding entirely. Cheap, optional, big precision win.
 
 - **Minify / obfuscation scoring → new capability
-  `MinifiedNoSource`.** Aggregate per-file: max line length,
-  identifier entropy, `\x`/`\u` escape ratio, mean comment
-  density. When `dist/` files score high and no `*.map` or
-  matching repo source is present, emit `Capability::
-  MinifiedNoSource`. This is plan.md threat-model item 5
-  ("Dist/source divergence"), currently unimplemented.
+  `MinifiedNoSource`.** **[shipped — NPM050]**
+  Per-file heuristic: very long lines (max ≥1000, mean ≥250) OR
+  high `\x`/`\u` escape density (≥30/KB), shipped from a
+  dist/build path, no companion `*.map`, no readable sibling
+  source (`.ts` or unminified `.js` with the same stem). Emits
+  `Capability::MinifiedNoSource` and a Medium+defer finding.
+  Implements plan.md threat-model item 5. Followup: AST-based
+  identifier-entropy refinement once `oxc_parser` is in.
 
 - **`NPM048` maintainer-add timestamp.** `NPM016` looks at
   package age. `NPM048` looks at the maintainer-add timestamp
