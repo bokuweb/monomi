@@ -20,3 +20,4 @@ monomi-nuget.workspace = true
 flate2.workspace = true
 tar.workspace = true
 zip = { version = "2", default-features = false, features = ["deflate"] }
+serde = { workspace = true, features = ["derive"] }

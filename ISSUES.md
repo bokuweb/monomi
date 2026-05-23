@@ -255,15 +255,20 @@ explicitly reserved for the maintainer — do not auto-implement.
   config libraries (bulk env, no network) and thin HTTP clients
   (network, no bulk env) out of the FP set.
 
-- **Real-tarball fixture corpus.** Today everything is synthetic.
-  Pull a curated set of historically-malicious tarballs from
-  `replicate.npmjs.com` archive (still publicly served):
-  `event-stream@3.3.6`, `flatmap-stream@0.1.1`,
-  `node-ipc@10.1.1`/`10.1.2`, `ua-parser-js@0.7.29`,
-  `coa@2.0.3`, `rc@1.2.9`, recent Shai-Hulud `nx@*` samples,
-  `@solana/web3.js@1.95.5`/`1.95.6`. Replay test enforces "rule
-  R caught known incident I" at CI time so refactors can't
-  silently regress detection.
+- **Real-tarball fixture corpus.** **[partially shipped]**
+  Infrastructure landed: `fixtures/corpus/manifest.json` (schema +
+  declared expectations per package), `scripts/fetch_corpus.sh`
+  (best-effort registry pull), `tests/corpus_replay.rs` (opt-in
+  `#[ignore]` test). In practice npm has unpublished almost every
+  canonical malicious version, so the fetch script currently 404s
+  on everything — manifest needs fallback URLs pointing at a
+  mirror (OSSF malicious-packages, web.archive.org, or private
+  Snyk/Phylum snapshot).
+  Synthetic regression suite shipped in parallel:
+  `tests/incident_shapes.rs` replays the *shape* of each major
+  2018–2024 incident (event-stream, ua-parser-js, node-ipc,
+  Shai-Hulud, Solana web3.js, anti-forensic self-delete). Runs
+  every push; six tests, six pass.
 
 - **AST-confirm pass for High/defer rules.** Regex-only matching
   produces FPs in comments / string literals and FNs in minified
