@@ -140,26 +140,32 @@ and the rest land as part of M13.
   High/defer.
 
 - **`NPM037` (runtime branches on `require.main.filename` /
-  `process.mainModule`)**
+  `process.mainModule`)** **[M13b — shipped in this PR]**
   Source reads `require.main.filename` / `process.mainModule`
   and string-matches its value against a literal package name
   list. Reference incident: event-stream / flatmap-stream 2018,
   payload only fired when consumed by `copay-dash`. Capability:
-  `DynamicEval`. Severity: High/defer.
+  `DynamicEval` + `TimeBomb` (gated activation). Severity:
+  High/defer. Two-prong match (main-module read + package-name
+  comparison) keeps FPs out of `require.main === module` CLI
+  patterns.
 
 - **`NPM038` (`require.cache[...]` mutation / module hijacking)**
-  Source writes to `require.cache[...]` or `delete require.cache[...]`
-  with a non-literal key. Module-substitution attack.
-  Capability: `DynamicRequire` + `DynamicEval`. Severity:
-  High/defer.
+  **[M13b — shipped in this PR]**
+  Source writes to `require.cache[...]` or `delete require.cache[...]`.
+  Module-substitution attack. Both `require.cache` and
+  `Module._cache` shapes are covered. Capability:
+  `DynamicRequire` + `DynamicEval`. Severity: High/defer.
 
 - **`NPM039` (mass file deletion shape, beyond
-  `fs.unlinkSync(__filename)`)**
-  `fs.unlink*`/`fs.rm*`/`rimraf` over a *traversal*
-  (`os.homedir()` + `readdirSync`, `process.cwd()` + glob,
+  `fs.unlinkSync(__filename)`)** **[M13b — shipped in this PR]**
+  `fs.rm*`/`rimraf`/`rm -rf` over a *traversal*
+  (`os.homedir()`, `process.cwd()`, `process.env.HOME`,
   root-anchored paths). Reference: node-ipc/peacenotwar 2022.
-  Capability: `FsWritePersistence` (subsumed) + new
-  `DestructiveFs` capability. Severity: Critical/decisive.
+  Capability: `DestructiveFs` (new, decisive on introduction).
+  Severity: Critical/decisive. Two-prong (destructive call +
+  traversal seed in same file) keeps FPs off legitimate
+  `rimraf('./dist')` build cleanup.
 
 - **`NPM040` (tarball ↔ git-tag divergence)** — see M12.
 
@@ -175,8 +181,11 @@ and the rest land as part of M13.
   Medium/defer.
 
 - **`NPM044` (`process.dlopen` / `process.binding` / V8 internals)**
-  Direct V8 internal access. Extremely unusual outside
-  Node-core-replacement libraries. Severity: High/defer.
+  **[M13b — shipped in this PR]**
+  Direct V8 internal access (`process.dlopen`, `process.binding`,
+  `process._linkedBinding`, `process._rawDebug`). Extremely
+  unusual outside Node-core-replacement libraries. Capability:
+  `V8Internal` (new) + `DynamicEval`. Severity: High/defer.
 
 - **`NPM045` (geolocation-gated destructive branches)**
   Source reads `process.env.LANG` / `Intl.DateTimeFormat`
@@ -185,8 +194,12 @@ and the rest land as part of M13.
   protestware. Severity: Critical/defer.
 
 - **`NPM046` (SetUID / SetGID binary in tarball)**
+  **[M13b — shipped in this PR]**
   Any file in the tarball whose tar header carries mode bits
-  `0o4000`/`0o2000`. Severity: Critical/decisive.
+  `0o4000`/`0o2000`. Applies to npm, cargo (.crate) and PyPI
+  sdist (all tar-based). Capability: `SetuidBinary` (new,
+  decisive on introduction). Severity: Critical/decisive.
+  Required plumbing `mode: Option<u32>` through `Entry`.
 
 - **`NPM047` (`crypto.createDecipheriv` with hardcoded key)**
   `createDecipheriv` / `createDecipher` call whose key argument
@@ -205,14 +218,21 @@ and the rest land as part of M13.
 
 ## Capability vocabulary follow-ups
 
-The M13a cluster introduces two new capabilities not in M7's set:
+The M13a/b clusters introduce these new capabilities not in M7's set:
 
-- `RegistryWrite` — code performs (or shells out to) a
+- `RegistryWrite` (M13a) — code performs (or shells out to) a
   registry-side write: `npm publish`, `npm token create`,
-  `cargo publish`, `twine upload`. Decisive on introduction
-  (added to `is_decisive_on_introduction`).
-- `DestructiveFs` — mass file deletion shape. Decisive on
-  introduction. To be added with `NPM039`.
+  `cargo publish`, `twine upload`. Decisive on introduction.
+- `SecretMaterial` (M13a) — references cryptocurrency private-key,
+  mnemonic, or seed-phrase shapes. Decisive on introduction.
+- `DestructiveFs` (M13b) — mass file deletion shape paired with
+  a homedir/cwd/root traversal seed. Decisive on introduction.
+- `SetuidBinary` (M13b) — file in tarball with setuid/setgid
+  mode bits. Decisive on introduction.
+- `V8Internal` (M13b) — direct V8/Node-core internal access
+  (`process.dlopen`, `process.binding`). Not decisive (some
+  legitimate Node-core-replacement libraries use it); pairs
+  with `DynamicEval` and defers to Stage 2.
 
 These extend `Capability` (additive — old verdicts still
 deserialize via `serde(default)`).

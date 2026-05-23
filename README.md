@@ -22,7 +22,7 @@ deployment recipe (R2 + systemd + rclone).
 
 ✅ Working end-to-end for npm + cargo + PyPI + NuGet:
 
-- Stage 1 deterministic rules (36 rules)
+- Stage 1 deterministic rules (48 rules)
 - Stage 2 LLM adjudicator with fail-open semantics
 - Content-addressed R2 catalog layout (writes to filesystem;
   `rclone`/`aws s3 sync` to R2)

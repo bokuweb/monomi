@@ -880,4 +880,160 @@ fn registry_write_introduction_is_decisive_via_capability() {
     use monomi_core::Capability;
     assert!(Capability::RegistryWrite.is_decisive_on_introduction());
     assert!(Capability::SecretMaterial.is_decisive_on_introduction());
+    assert!(Capability::DestructiveFs.is_decisive_on_introduction());
+    assert!(Capability::SetuidBinary.is_decisive_on_introduction());
+}
+
+// --- M13b: NPM037-046 -----------------------------------------------
+
+fn build_tgz_with_modes(files: &[(&str, &[u8], u32)]) -> Vec<u8> {
+    let mut gz = GzEncoder::new(Vec::new(), Compression::default());
+    {
+        let mut b = Builder::new(&mut gz);
+        for (path, data, mode) in files {
+            let mut h = Header::new_gnu();
+            h.set_path(path).unwrap();
+            h.set_size(data.len() as u64);
+            h.set_mode(*mode);
+            h.set_cksum();
+            b.append(&h, *data).unwrap();
+        }
+        b.finish().unwrap();
+    }
+    gz.finish().unwrap()
+}
+
+#[test]
+fn main_module_branch_event_stream_shape_fires_npm037() {
+    let pkg = r#"{ "name": "stream-helper", "version": "0.0.1" }"#;
+    let src = r#"
+        var main = require.main.filename;
+        if (main.indexOf("copay-dash") !== -1) {
+            require('./payload.js');
+        }
+    "#;
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"NPM037"), "expected NPM037, got {ids:?}");
+}
+
+#[test]
+fn main_module_without_pkg_name_compare_does_not_fire_npm037() {
+    // Common CLI pattern: "am I being required vs run directly?" —
+    // reads require.main.filename but compares against __filename,
+    // not a package-name literal. Should NOT trip NPM037.
+    let pkg = r#"{ "name": "cli", "version": "0.0.1" }"#;
+    let src = "if (require.main === module) { run(); }";
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(!ids.contains(&"NPM037"), "false positive: {ids:?}");
+}
+
+#[test]
+fn require_cache_write_fires_npm038() {
+    let pkg = r#"{ "name": "hijacker", "version": "0.0.1" }"#;
+    let src = r#"
+        var target = Object.keys(require.cache).find(k => k.includes('lodash'));
+        require.cache[target] = { exports: malicious };
+    "#;
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"NPM038"), "expected NPM038, got {ids:?}");
+}
+
+#[test]
+fn require_cache_read_does_not_fire_npm038() {
+    let pkg = r#"{ "name": "reader", "version": "0.0.1" }"#;
+    let src = "var loaded = Object.keys(require.cache);";
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(!ids.contains(&"NPM038"), "false positive: {ids:?}");
+}
+
+#[test]
+fn destructive_fs_homedir_fires_npm039() {
+    let pkg = r#"{ "name": "wiper", "version": "0.0.1" }"#;
+    let src = r#"
+        var os = require('os');
+        var fs = require('fs');
+        fs.rmSync(os.homedir(), { recursive: true, force: true });
+    "#;
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"NPM039"), "expected NPM039, got {ids:?}");
+    assert_eq!(s.verdict, Stage1Verdict::Malicious);
+}
+
+#[test]
+fn rimraf_on_known_build_dir_does_not_fire_npm039() {
+    // Legitimate cleanup of a literal build dir — no traversal seed,
+    // no homedir, no cwd. Should NOT fire.
+    let pkg = r#"{ "name": "build-tool", "version": "0.0.1" }"#;
+    let src = "const rimraf = require('rimraf'); rimraf.sync('./dist');";
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(!ids.contains(&"NPM039"), "false positive: {ids:?}");
+}
+
+#[test]
+fn v8_internal_dlopen_fires_npm044() {
+    let pkg = r#"{ "name": "loader", "version": "0.0.1" }"#;
+    let src = "process.dlopen(module, '/tmp/payload.node');";
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"NPM044"), "expected NPM044, got {ids:?}");
+}
+
+#[test]
+fn setuid_bit_in_tarball_fires_npm046() {
+    let pkg = r#"{ "name": "suid", "version": "0.0.1" }"#;
+    // 0o4755 = setuid + rwxr-xr-x
+    let bytes = build_tgz_with_modes(&[
+        ("package/package.json", pkg.as_bytes(), 0o644),
+        ("package/bin/tool", b"#!/bin/sh\necho hi\n", 0o4755),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(ids.contains(&"NPM046"), "expected NPM046, got {ids:?}");
+    assert_eq!(s.verdict, Stage1Verdict::Malicious);
+}
+
+#[test]
+fn plain_executable_bit_does_not_fire_npm046() {
+    let pkg = r#"{ "name": "plain", "version": "0.0.1" }"#;
+    let bytes = build_tgz_with_modes(&[
+        ("package/package.json", pkg.as_bytes(), 0o644),
+        ("package/bin/tool", b"#!/bin/sh\necho hi\n", 0o755),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(!ids.contains(&"NPM046"), "false positive: {ids:?}");
 }
