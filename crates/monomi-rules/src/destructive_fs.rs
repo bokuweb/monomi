@@ -82,6 +82,12 @@ impl Rule for DestructiveFsTraversal {
             if !TRAVERSAL_SEED_RE.is_match(text) {
                 continue;
             }
+            // Drop when the destructive call sits in a comment or
+            // string literal (security-research blog post embedded
+            // as a docstring is the canonical FP).
+            if !crate::ast_helpers::regex_hit_in_code(ctx, &entry.path, text, d.start()) {
+                continue;
+            }
             out.push(make_finding(entry.path.clone(), d.as_str().to_string()));
         }
         for life in ctx.lifecycle {

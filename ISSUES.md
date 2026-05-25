@@ -270,20 +270,24 @@ explicitly reserved for the maintainer — do not auto-implement.
   Shai-Hulud, Solana web3.js, anti-forensic self-delete). Runs
   every push; six tests, six pass.
 
-- **AST-confirm pass for High/defer rules.** **[infra shipped]**
+- **AST-confirm pass for High/defer rules.** **[rolled out]**
   New `monomi-ast` crate wraps `oxc_parser` and exposes a
   *materialized summary* (`JsAnalysis` — calls, member accesses,
   string literals, requires, comments) so consumers never see the
   AST lifetime. `AstCache` is wired into `AnalysisCtx::ast` via
   an opaque `AstHandle` trait (keeps `monomi-core` parser-free).
-  POC: NPM038 (require.cache mutation) now drops regex hits that
-  land inside comments or string/template literals.
-  **Followups** (separate PRs, easy now that the infra is in):
-  convert NPM005 (eval_blob), NPM017 (encoded_url),
-  NPM018 (self_delete), NPM039 (destructive_fs), NPM044
-  (v8_internal); add minified-payload FN recovery (regex misses
-  packed `;fs.rmSync(...` shapes, AST finds them); add
-  identifier-entropy refinement to NPM050 minified scorer.
+  Project-wide convention lives in `ast_helpers::regex_hit_in_code`:
+  regex hits whose byte position falls inside a comment or
+  string/template literal are dropped. Converted to the two-prong
+  pattern so far: NPM005 (eval_blob), NPM015 (encoded_url),
+  NPM018 (self_delete), NPM038 (require_cache_mutation),
+  NPM039 (destructive_fs), NPM044 (v8_internal).
+  **Remaining followups**: AST-driven minified-payload FN recovery
+  (regex misses packed `;fs.rmSync(...` shapes — AST visitor finds
+  them regardless of surrounding whitespace); identifier-entropy
+  refinement on NPM050; per-call argument-shape pattern matching
+  (e.g. `eval(<string-literal>)` is decisive while `eval(varname)`
+  defers to Stage 2).
 
   **Why combinators over a YAML DSL?** At 50 rules a per-rule
   Rust file is the cheapest authoring surface — and many rules

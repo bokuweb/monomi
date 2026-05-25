@@ -1243,3 +1243,106 @@ fn readable_dist_does_not_fire_npm050() {
     let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
     assert!(!ids.contains(&"NPM050"), "false positive: {ids:?}");
 }
+
+// --- AST rollout: comment/string FP suppression on existing rules ---
+//
+// These tests document each rule's new behavior post-AST-rollout:
+// regex hits buried in comments or string/template literals are
+// dropped. The same source without the surrounding comment/string
+// still fires — covered by the existing positive tests above.
+
+#[test]
+fn self_delete_in_comment_is_suppressed_npm018() {
+    let pkg = r#"{ "name": "doc-only", "version": "0.0.1" }"#;
+    let src = r#"
+        // Bad: fs.unlinkSync(__filename) — would self-delete payload.
+        // We only read:
+        console.log(__filename);
+    "#;
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(!ids.contains(&"NPM018"), "AST-confirm should have suppressed: {ids:?}");
+}
+
+#[test]
+fn encoded_url_bytes_in_comment_is_suppressed_npm015() {
+    let pkg = r#"{ "name": "explainer", "version": "0.0.1" }"#;
+    let src = r#"
+        // Static-scanner evasion looks like: [104, 116, 116, 112].
+        // We use a clean URL constant instead:
+        const URL = 'https://example.com';
+    "#;
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(!ids.contains(&"NPM015"), "AST-confirm should have suppressed: {ids:?}");
+}
+
+#[test]
+fn v8_internal_in_string_literal_is_suppressed_npm044() {
+    let pkg = r#"{ "name": "docs", "version": "0.0.1" }"#;
+    let src = r#"
+        const RISKS = "Watch for process.dlopen(handle, path) — addon load bypass.";
+        module.exports = RISKS;
+    "#;
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(!ids.contains(&"NPM044"), "AST-confirm should have suppressed: {ids:?}");
+}
+
+#[test]
+fn destructive_fs_in_template_literal_is_suppressed_npm039() {
+    // A README-style explainer paired with a real homedir read for
+    // legitimate diagnostic output. Pre-AST behavior would have
+    // tripped NPM039 because both regexes match the file.
+    let pkg = r#"{ "name": "diag", "version": "0.0.1" }"#;
+    let src = r#"
+        const os = require('os');
+        const DOC = `
+            Attacker shape we DON'T do here:
+              rimraf(os.homedir())
+            We only print the path:
+        `;
+        console.log(DOC, os.homedir());
+    "#;
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(!ids.contains(&"NPM039"), "AST-confirm should have suppressed: {ids:?}");
+}
+
+#[test]
+fn eval_blob_with_eval_in_comment_is_suppressed_npm005() {
+    // Large base64 blob is fine (data URI, config dump, etc.); the
+    // only `eval(` mention sits in an explanatory comment, so NPM005
+    // should not fire.
+    let pkg = r#"{ "name": "data", "version": "0.0.1" }"#;
+    let blob = "A".repeat(2048);
+    let src = format!(
+        r#"
+        // We do NOT eval(payload) here. This is a static data URI:
+        export const DATA = "{blob}";
+        "#
+    );
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(!ids.contains(&"NPM005"), "AST-confirm should have suppressed: {ids:?}");
+}

@@ -44,6 +44,16 @@ impl Rule for EncodedUrlBytes {
             }
             let Some(text) = entry.text() else { continue };
             if let Some(m) = HTTP_BYTES_RE.find(text) {
+                // For JS files, suppress hits inside comments /
+                // strings via the AST cache. Non-JS scannable sources
+                // (Python, etc.) skip the check — the helper would
+                // return true anyway, but the explicit guard avoids
+                // a wasted parse attempt.
+                if matches!(entry.kind, monomi_core::EntryKind::JsSource)
+                    && !crate::ast_helpers::regex_hit_in_code(ctx, &entry.path, text, m.start())
+                {
+                    continue;
+                }
                 out.push(make_finding(entry.path.clone(), m.as_str().to_string()));
             }
         }

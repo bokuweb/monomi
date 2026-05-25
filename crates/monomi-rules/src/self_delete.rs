@@ -39,10 +39,15 @@ impl Rule for SelfDeletePayload {
             }
             let Some(text) = entry.text() else { continue };
             if let Some(m) = SELF_DELETE_RE.find(text) {
+                if !crate::ast_helpers::regex_hit_in_code(ctx, &entry.path, text, m.start()) {
+                    continue;
+                }
                 out.push(make_finding(entry.path.clone(), m.as_str().to_string()));
             }
         }
         for life in ctx.lifecycle {
+            // Lifecycle bodies are shell-ish (`node -e "..."` etc.),
+            // not JS source — AST suppression doesn't apply.
             if let Some(m) = SELF_DELETE_RE.find(&life.body) {
                 out.push(make_finding(
                     format!("package.json#scripts.{}", life.name),

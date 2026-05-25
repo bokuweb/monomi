@@ -61,12 +61,21 @@ impl Rule for EvalLargeBlob {
                 continue;
             }
             let Some(text) = entry.text() else { continue };
-            if let Some(excerpt) = self.find_proximity(text) {
+            // AST suppression filter: skip exec/blob hits whose
+            // byte position is inside a comment or string literal.
+            // README content embedded as a template literal that
+            // happens to mention `eval(...)` near a base64 blob
+            // shouldn't trip this rule.
+            let in_code = |pos: usize| {
+                crate::ast_helpers::regex_hit_in_code(ctx, &entry.path, text, pos)
+            };
+            if let Some(excerpt) = self.find_proximity(text, &in_code) {
                 out.push(make_finding(entry.path.clone(), excerpt));
             }
         }
         for life in ctx.lifecycle {
-            if let Some(excerpt) = self.find_proximity(&life.body) {
+            // Lifecycle bodies aren't JS files; trust the regex.
+            if let Some(excerpt) = self.find_proximity(&life.body, &|_| true) {
                 out.push(make_finding(
                     format!("package.json#scripts.{}", life.name),
                     excerpt,
@@ -78,7 +87,7 @@ impl Rule for EvalLargeBlob {
 }
 
 impl EvalLargeBlob {
-    fn find_proximity(&self, text: &str) -> Option<String> {
+    fn find_proximity(&self, text: &str, in_code: &dyn Fn(usize) -> bool) -> Option<String> {
         let blob_hits: Vec<(usize, usize)> = B64_RE
             .find_iter(text)
             .chain(HEX_RE.find_iter(text))
@@ -90,6 +99,13 @@ impl EvalLargeBlob {
         }
         let exec_hits: Vec<(usize, usize)> = EXEC_RE
             .find_iter(text)
+            // The exec call is the load-bearing part — if it's in a
+            // comment, this whole pattern doesn't actually run. We
+            // *don't* filter blobs the same way because a big base64
+            // string is often surrounded by quotes (which is fine —
+            // that's how it's loaded). The blob being in a string
+            // literal is the *expected* shape.
+            .filter(|m| in_code(m.start()))
             .map(|m| (m.start(), m.end()))
             .collect();
         if exec_hits.is_empty() {
