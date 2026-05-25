@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use crate::{
     artifact::{ArtifactId, EcosystemId},
     ecosystem::{LifecycleEntry, PackageDiff, RegistryMetadata},
@@ -5,6 +7,16 @@ use crate::{
     finding::Finding,
     manifest::Manifest,
 };
+
+/// Opaque AST cache handle. The actual cache type lives in
+/// `monomi-ast` (which depends on `oxc_parser`); we don't want
+/// `monomi-core` to take that dependency since not every consumer
+/// of `AnalysisCtx` (non-JS ecosystems, embedded users) wants the
+/// parser linked in. Rules that need the AST downcast via
+/// `AstHandle::downcast_ref::<AstCache>()`.
+pub trait AstHandle: Any + Send + Sync {
+    fn as_any(&self) -> &dyn Any;
+}
 
 /// Reference data (top package names, exfil endpoint lists, etc.)
 /// shared across rule evaluations.
@@ -26,6 +38,12 @@ pub struct AnalysisCtx<'a> {
     /// `Ecosystem::fetch_registry_metadata`.
     pub registry: Option<&'a RegistryMetadata>,
     pub corpus: &'a Corpus,
+    /// Optional JS/TS AST cache (`monomi_ast::AstCache`, behind a
+    /// downcast). Wired in by the pipeline for npm scans; `None`
+    /// for ecosystems that don't carry JS, for stage1-only tests
+    /// that don't need AST confirmation, and for old verdict
+    /// replays.
+    pub ast: Option<&'a dyn AstHandle>,
 }
 
 pub trait Rule: Send + Sync {

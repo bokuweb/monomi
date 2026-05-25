@@ -270,14 +270,28 @@ explicitly reserved for the maintainer — do not auto-implement.
   Shai-Hulud, Solana web3.js, anti-forensic self-delete). Runs
   every push; six tests, six pass.
 
-- **AST-confirm pass for High/defer rules.** Regex-only matching
-  produces FPs in comments / string literals and FNs in minified
-  payloads (`;fs.rmSync(...` style). Run `oxc_parser` on JS
-  source as a second pass for the rules where confidence matters
-  most (NPM005, NPM017, NPM018, NPM038, NPM039). If AST confirms
-  the regex hit isn't inside a comment/string, bump severity by
-  one notch. If the rule fired *only* via regex and AST disagrees,
-  drop the finding entirely. Cheap, optional, big precision win.
+- **AST-confirm pass for High/defer rules.** **[infra shipped]**
+  New `monomi-ast` crate wraps `oxc_parser` and exposes a
+  *materialized summary* (`JsAnalysis` — calls, member accesses,
+  string literals, requires, comments) so consumers never see the
+  AST lifetime. `AstCache` is wired into `AnalysisCtx::ast` via
+  an opaque `AstHandle` trait (keeps `monomi-core` parser-free).
+  POC: NPM038 (require.cache mutation) now drops regex hits that
+  land inside comments or string/template literals.
+  **Followups** (separate PRs, easy now that the infra is in):
+  convert NPM005 (eval_blob), NPM017 (encoded_url),
+  NPM018 (self_delete), NPM039 (destructive_fs), NPM044
+  (v8_internal); add minified-payload FN recovery (regex misses
+  packed `;fs.rmSync(...` shapes, AST finds them); add
+  identifier-entropy refinement to NPM050 minified scorer.
+
+  **Why combinators over a YAML DSL?** At 50 rules a per-rule
+  Rust file is the cheapest authoring surface — and many rules
+  need cross-cut state (lifecycle bodies, registry metadata,
+  top-1k corpus) a pure-AST DSL can't express. The combinator
+  layer gives ESLint-selector expressiveness while keeping
+  type-safe authoring. If external contributors ever justify a
+  YAML DSL, the same `JsAnalysis` summary becomes its runtime.
 
 - **Minify / obfuscation scoring → new capability
   `MinifiedNoSource`.** **[shipped — NPM050]**

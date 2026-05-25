@@ -89,6 +89,7 @@ fn fired_rules(tar_bytes: Vec<u8>) -> BTreeSet<String> {
         diff: None,
         registry: None,
         corpus: &corpus,
+        ast: None,
     };
     run(&default_ruleset(), &ctx)
         .stage1

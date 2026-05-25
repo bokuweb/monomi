@@ -60,6 +60,7 @@ fn fired(tar_bytes: Vec<u8>) -> Vec<String> {
         diff: None,
         registry: None,
         corpus: &corpus,
+        ast: None,
     };
     let s = run(&default_ruleset(), &ctx).stage1;
     // Note: we deliberately do NOT assert Verdict::Malicious here.

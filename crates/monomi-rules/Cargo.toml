@@ -7,6 +7,7 @@ repository.workspace = true
 
 [dependencies]
 monomi-core.workspace = true
+monomi-ast.workspace = true
 regex.workspace = true
 once_cell = "1"
 serde_json.workspace = true

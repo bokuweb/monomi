@@ -100,6 +100,11 @@ pub async fn analyze_with_diff<E: Ecosystem>(
         });
 
     let corpus: Corpus = default_corpus();
+    // AST cache is constructed per-scan and shared across all rules.
+    // Cheap when no rule asks for it (lazy population); rules that
+    // need precision confirmation downcast the trait handle back to
+    // `&monomi_ast::AstCache` and call `get_or_parse`.
+    let ast_cache = monomi_ast::AstCache::new();
     let ctx = monomi_core::AnalysisCtx {
         artifact: &artifact,
         manifest: &manifest,
@@ -108,6 +113,7 @@ pub async fn analyze_with_diff<E: Ecosystem>(
         diff: None,
         registry: registry.as_ref(),
         corpus: &corpus,
+        ast: Some(&ast_cache),
     };
 
     let rules = default_ruleset();

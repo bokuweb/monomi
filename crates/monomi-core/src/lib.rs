@@ -23,7 +23,7 @@ pub use entry::{Entry, EntryKind};
 pub use error::{Error, Result};
 pub use finding::{Category, Finding, Location, Severity};
 pub use manifest::Manifest;
-pub use rule::{AnalysisCtx, Corpus, Rule};
+pub use rule::{AnalysisCtx, AstHandle, Corpus, Rule};
 pub use verdict::{
     DiffOutcome, FinalVerdict, RecommendedAction, Stage1Result, Stage1Verdict, Stage2Result,
     Stage2Verdict, Status, Verdict, VerdictSource, SCHEMA_VERSION,

@@ -45,6 +45,7 @@ fn analyze(bytes: Vec<u8>) -> monomi_core::Stage1Result {
         integrity: Integrity::from_bytes(HashAlgo::Sha512, &tar.bytes),
     };
     let corpus = Corpus::default();
+    let ast_cache = monomi_ast::AstCache::new();
     let ctx = AnalysisCtx {
         artifact: &artifact,
         manifest: &manifest,
@@ -53,6 +54,7 @@ fn analyze(bytes: Vec<u8>) -> monomi_core::Stage1Result {
         diff: None,
         registry: None,
         corpus: &corpus,
+        ast: Some(&ast_cache),
     };
     run(&default_ruleset(), &ctx).stage1
 }
@@ -436,6 +438,7 @@ fn typosquat_fires_against_default_corpus() {
         diff: None,
         registry: None,
         corpus: &corpus,
+        ast: None,
     };
     let s = run(&monomi_rules::default_ruleset(), &ctx).stage1;
     let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
@@ -472,6 +475,7 @@ fn typosquat_no_fp_for_top_package_itself() {
         diff: None,
         registry: None,
         corpus: &corpus,
+        ast: None,
     };
     let s = run(&monomi_rules::default_ruleset(), &ctx).stage1;
     assert!(
@@ -964,6 +968,51 @@ fn require_cache_read_does_not_fire_npm038() {
     let s = analyze(bytes);
     let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
     assert!(!ids.contains(&"NPM038"), "false positive: {ids:?}");
+}
+
+#[test]
+fn require_cache_mutation_in_comment_is_suppressed_by_ast_pass_npm038() {
+    // The regex alone matches this string. The AST-confirm pass
+    // recognizes it sits inside a `//` comment and drops the
+    // finding. Pre-AST behavior would have produced a false
+    // positive; we explicitly assert the FP is gone.
+    let pkg = r#"{ "name": "documented", "version": "0.0.1" }"#;
+    let src = r#"
+        // Historical note: malware would do
+        //   require.cache[targetPath] = { exports: maliciousObj };
+        // to hijack a module. We just read for diagnostics:
+        console.log(Object.keys(require.cache).length);
+    "#;
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    assert!(!ids.contains(&"NPM038"), "AST-confirm should have suppressed: {ids:?}");
+}
+
+#[test]
+fn require_cache_mutation_in_string_literal_is_suppressed_by_ast_pass_npm038() {
+    // README/docstring embedded as a multi-line string literal.
+    let pkg = r#"{ "name": "stringy", "version": "0.0.1" }"#;
+    let src = r#"
+        const DOC = `
+            Attackers can do:
+                require.cache[mod] = { exports: x };
+            so we sanitize on read.
+        `;
+        module.exports = DOC;
+    "#;
+    let bytes = build_tgz(&[
+        ("package/package.json", pkg.as_bytes()),
+        ("package/index.js", src.as_bytes()),
+    ]);
+    let s = analyze(bytes);
+    let ids: Vec<_> = s.findings.iter().map(|f| f.rule_id.as_str()).collect();
+    // NOTE: oxc reports template literals as string literals at the
+    // outer span, so the AST suppression catches this too.
+    assert!(!ids.contains(&"NPM038"), "AST-confirm should have suppressed: {ids:?}");
 }
 
 #[test]
