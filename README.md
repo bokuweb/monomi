@@ -50,6 +50,7 @@ monomi publish <verdict.json> --catalog-dir <dir>
 monomi lookup <name>@<version> --catalog-dir <dir>   # local catalog
 monomi lookup <name>@<version> --catalog-url <url>   # HTTP/R2 catalog
 monomi diff <name>@<v1> <name>@<v2>                  # capability + finding delta
+monomi explain <name>@<version>                      # human-readable narrative
 ```
 
 Add `--stage1-only` to any command to skip the LLM step.

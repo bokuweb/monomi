@@ -183,6 +183,31 @@ enum Cmd {
         #[arg(long)]
         with_stage2: bool,
     },
+    /// Render a verdict as a human-readable narrative.
+    ///
+    /// Resolves the verdict from (in order): `--file` if given,
+    /// otherwise catalog lookup if `--catalog-dir`/`--catalog-url` is
+    /// given, otherwise a fresh fetch + Stage 1 scan. Output
+    /// references the rule's reference-incident provenance so the
+    /// reader can cite it in an audit. Differentiator vs Socket/Snyk,
+    /// whose rule reasoning is proprietary.
+    Explain {
+        /// `<name>@<version>` (resolved via catalog or fresh scan).
+        spec: Option<String>,
+        /// Which registry to query when no `--file` and no catalog hit.
+        #[arg(long, value_enum, default_value_t = DiffEco::Npm)]
+        ecosystem: DiffEco,
+        /// Load verdict from a JSON file instead of resolving from
+        /// catalog/registry.
+        #[arg(long, conflicts_with = "spec")]
+        file: Option<PathBuf>,
+        /// Prefer this catalog before re-scanning.
+        #[arg(long)]
+        catalog_dir: Option<PathBuf>,
+        /// HTTP catalog (e.g. R2 bucket) checked when --catalog-dir absent.
+        #[arg(long, conflicts_with = "catalog_dir")]
+        catalog_url: Option<String>,
+    },
     /// Analyze an explicit list of packages (one per line).
     Backfill {
         /// File with `<name>` or `<name>@<version>` per line; `-` for stdin.
@@ -489,6 +514,49 @@ async fn real_main(cli: Cli) -> Result<ExitCode> {
                 (Status::Clean, Status::Warn | Status::Block) | (Status::Warn, Status::Block)
             );
             Ok(ExitCode::from(if worse { 1 } else { 0 }))
+        }
+        Cmd::Explain {
+            spec,
+            ecosystem,
+            file,
+            catalog_dir,
+            catalog_url,
+        } => {
+            let v: Verdict = if let Some(p) = file {
+                let raw = std::fs::read_to_string(&p)
+                    .with_context(|| format!("read {}", p.display()))?;
+                serde_json::from_str(&raw).context("parse verdict JSON")?
+            } else {
+                let spec = spec.ok_or_else(|| {
+                    anyhow!("`explain` needs `<name>@<version>` or `--file <verdict.json>`")
+                })?;
+                let (name, version) = parse_spec(&spec)?;
+                let catalog_reader: Option<Box<dyn CatalogReader>> =
+                    match (&catalog_dir, &catalog_url) {
+                        (Some(d), _) => Some(Box::new(LocalDirCatalog::new(d.clone()))),
+                        (None, Some(u)) => Some(Box::new(HttpCatalogReader::new(u.clone()))),
+                        (None, None) => None,
+                    };
+                // Stage 2 stays off — explain is a presentation layer
+                // on existing data, not a fresh-LLM-call command.
+                resolve_verdict_for_diff(
+                    ecosystem,
+                    &name,
+                    &version,
+                    catalog_reader.as_deref(),
+                    &monomi_llm::NoopAdjudicator,
+                )
+                .await
+                .with_context(|| format!("resolve `{name}@{version}`"))?
+            };
+            print!("{}", monomi_pipeline::explain_text(&v));
+            // Exit code mirrors the underlying verdict's final status
+            // so this can also be used as a one-liner gate.
+            Ok(ExitCode::from(match v.final_verdict.status {
+                Status::Clean => 0,
+                Status::Warn => 0,
+                Status::Block => 1,
+            }))
         }
         Cmd::Backfill {
             list,

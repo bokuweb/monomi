@@ -321,11 +321,21 @@ explicitly reserved for the maintainer — do not auto-implement.
   Dependabot consume monomi verdicts directly. `monomi vex
   <integrity>` subcommand.
 
-- **`monomi explain <integrity>`.** Render the verdict as a
-  human-readable narrative: for each finding, the CVE-retrospective
-  reference incident, what the rule actually matched, why it's
-  block-grade. Socket's reasoning is proprietary; ours can
-  reference public post-mortems.
+- **`monomi explain <name>@<version>`.** **[shipped]**
+  CLI renders the verdict as a human-readable narrative — per
+  finding: title, plain-language threat description, CVE-retrospective
+  reference incident, recommended action. Static `RULE_NARRATIVES`
+  table in `monomi-pipeline::explain` (currently populated for
+  ~15 high-impact rules; the rest fall back to `Finding::message`).
+  Resolves the verdict from `--file`, `--catalog-dir`/`--catalog-url`,
+  or a fresh fetch+scan. Exit code 1 when final status is Block —
+  same gating contract as `monomi scan`. Differentiator vs Socket
+  whose reasoning is proprietary; ours is checked-in and citable
+  in audits.
+
+  Followups: populate the narrative table for the remaining ~35
+  rules; add `--format json` for machine consumers; add
+  `--format markdown` for sakimori step summaries.
 
 - **`monomi diff <name>@v1 <name>@v2`.** **[shipped]**
   CLI subcommand exposes the same capability/finding-delta view
