@@ -16,9 +16,11 @@ use monomi_rules::{default_corpus, default_ruleset, run, RULESET_VERSION};
 
 pub mod diff;
 pub mod history;
+pub mod verdict_diff;
 
 pub use diff::CapabilityDiffInput;
 pub use history::DEFAULT_BASELINE_WINDOW;
+pub use verdict_diff::{diff_verdicts, VerdictDiff};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PipelineError {

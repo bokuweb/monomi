@@ -151,6 +151,38 @@ enum Cmd {
         #[arg(long, default_value = "https://registry.npmjs.org")]
         registry_url: String,
     },
+    /// Compare two versions of a package — capability and finding deltas.
+    ///
+    /// Each side is resolved in order: catalog first (if `--catalog-dir`
+    /// or `--catalog-url` is given), then registry fetch + Stage 1 scan.
+    /// Both sides MUST resolve to the same package name. Stage 2 is
+    /// skipped by default (this is a static-comparison view); pass
+    /// `--with-stage2` to include LLM verdicts on each side.
+    Diff {
+        /// Which registry to query.
+        #[arg(long, value_enum, default_value_t = DiffEco::Npm)]
+        ecosystem: DiffEco,
+        /// First version: `<name>@<version>` or `<version>` if `--name`.
+        a: String,
+        /// Second version: same shape as `a`.
+        b: String,
+        /// Shared package name when `a` and `b` are bare versions.
+        #[arg(long)]
+        name: Option<String>,
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = DiffFormat::Text)]
+        format: DiffFormat,
+        /// Prefer this catalog before re-scanning.
+        #[arg(long)]
+        catalog_dir: Option<PathBuf>,
+        /// HTTP catalog (e.g. R2 bucket) checked when --catalog-dir absent.
+        #[arg(long, conflicts_with = "catalog_dir")]
+        catalog_url: Option<String>,
+        /// Run Stage 2 (LLM) on each side. Off by default — diffing is
+        /// a Stage 1 view, and Stage 2 doubles the cost & token spend.
+        #[arg(long)]
+        with_stage2: bool,
+    },
     /// Analyze an explicit list of packages (one per line).
     Backfill {
         /// File with `<name>` or `<name>@<version>` per line; `-` for stdin.
@@ -177,6 +209,31 @@ enum BackfillEco {
     Cargo,
     Pypi,
     Nuget,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+enum DiffEco {
+    Npm,
+    Cargo,
+    Pypi,
+    Nuget,
+}
+
+impl DiffEco {
+    fn id(self) -> EcosystemId {
+        match self {
+            DiffEco::Npm => EcosystemId::Npm,
+            DiffEco::Cargo => EcosystemId::Cargo,
+            DiffEco::Pypi => EcosystemId::Pypi,
+            DiffEco::Nuget => EcosystemId::Nuget,
+        }
+    }
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+enum DiffFormat {
+    Text,
+    Json,
 }
 
 #[tokio::main]
@@ -371,6 +428,67 @@ async fn real_main(cli: Cli) -> Result<ExitCode> {
             cfg.since = since;
             monomi_feed::run(cfg, catalog, adjudicator).await?;
             Ok(ExitCode::from(0))
+        }
+        Cmd::Diff {
+            ecosystem,
+            a,
+            b,
+            name,
+            format,
+            catalog_dir,
+            catalog_url,
+            with_stage2,
+        } => {
+            let (name_a, ver_a) = parse_diff_spec(&a, name.as_deref())?;
+            let (name_b, ver_b) = parse_diff_spec(&b, name.as_deref())?;
+            if name_a != name_b {
+                return Err(anyhow!(
+                    "diff requires the same package on both sides; got `{name_a}` vs `{name_b}`"
+                ));
+            }
+            let catalog_reader: Option<Box<dyn CatalogReader>> = match (&catalog_dir, &catalog_url)
+            {
+                (Some(d), _) => Some(Box::new(LocalDirCatalog::new(d.clone()))),
+                (None, Some(u)) => Some(Box::new(HttpCatalogReader::new(u.clone()))),
+                (None, None) => None,
+            };
+            let stage2_adj: &dyn monomi_llm::Adjudicator = if with_stage2 {
+                adjudicator.as_ref()
+            } else {
+                &monomi_llm::NoopAdjudicator
+            };
+            let va = resolve_verdict_for_diff(
+                ecosystem,
+                &name_a,
+                &ver_a,
+                catalog_reader.as_deref(),
+                stage2_adj,
+            )
+            .await
+            .with_context(|| format!("resolve `{name_a}@{ver_a}`"))?;
+            let vb = resolve_verdict_for_diff(
+                ecosystem,
+                &name_b,
+                &ver_b,
+                catalog_reader.as_deref(),
+                stage2_adj,
+            )
+            .await
+            .with_context(|| format!("resolve `{name_b}@{ver_b}`"))?;
+            let d = monomi_pipeline::diff_verdicts(&va, &vb);
+            match format {
+                DiffFormat::Json => {
+                    println!("{}", serde_json::to_string_pretty(&d)?);
+                }
+                DiffFormat::Text => render_diff_text(&d),
+            }
+            // Exit code: 0 if no functional change, 1 if status got
+            // worse (Clean → Warn/Block, Warn → Block).
+            let worse = matches!(
+                (va.final_verdict.status, vb.final_verdict.status),
+                (Status::Clean, Status::Warn | Status::Block) | (Status::Warn, Status::Block)
+            );
+            Ok(ExitCode::from(if worse { 1 } else { 0 }))
         }
         Cmd::Backfill {
             list,
@@ -592,6 +710,142 @@ fn parse_spec(s: &str) -> Result<(String, String)> {
         .ok_or_else(|| anyhow!("expected `<name>@<version>`, got `{s}`"))?;
     let (name, version_with_at) = s.split_at(at);
     Ok((name.to_string(), version_with_at[1..].to_string()))
+}
+
+/// Parse a `monomi diff` side: either `<name>@<version>` (`name`
+/// argument ignored), or a bare `<version>` paired with `--name`.
+fn parse_diff_spec(s: &str, shared_name: Option<&str>) -> Result<(String, String)> {
+    if s.contains('@') {
+        parse_spec(s)
+    } else if let Some(n) = shared_name {
+        Ok((n.to_string(), s.to_string()))
+    } else {
+        Err(anyhow!(
+            "version `{s}` has no `@`; pass `<name>@<version>` or use `--name`"
+        ))
+    }
+}
+
+/// Resolve a verdict for the diff: catalog first when available,
+/// otherwise fetch the tarball and scan. Stage 2 is honored when
+/// the caller passes a real adjudicator (the diff path uses
+/// `NoopAdjudicator` by default).
+async fn resolve_verdict_for_diff(
+    eco: DiffEco,
+    name: &str,
+    version: &str,
+    catalog: Option<&dyn CatalogReader>,
+    adjudicator: &dyn monomi_llm::Adjudicator,
+) -> Result<Verdict> {
+    if let Some(c) = catalog {
+        if let Some(v) = c.lookup_by_nv(eco.id(), name, version).await? {
+            return Ok(v);
+        }
+    }
+    // Catalog miss (or no catalog): scan fresh.
+    match eco {
+        DiffEco::Npm => {
+            let e = NpmEcosystem::new();
+            let tar = monomi_core::Ecosystem::fetch(&e, name, version).await?;
+            Ok(analyze(&e, tar, adjudicator).await?)
+        }
+        DiffEco::Cargo => {
+            let e = CargoEcosystem::new();
+            let tar = monomi_core::Ecosystem::fetch(&e, name, version).await?;
+            Ok(analyze(&e, tar, adjudicator).await?)
+        }
+        DiffEco::Pypi => {
+            let e = PypiEcosystem::new();
+            let tar = monomi_core::Ecosystem::fetch(&e, name, version).await?;
+            Ok(analyze(&e, tar, adjudicator).await?)
+        }
+        DiffEco::Nuget => {
+            let e = NugetEcosystem::new();
+            let tar = monomi_core::Ecosystem::fetch(&e, name, version).await?;
+            Ok(analyze(&e, tar, adjudicator).await?)
+        }
+    }
+}
+
+/// Human-readable text rendering for `monomi diff`. Designed to be
+/// readable in a terminal without color escapes — sakimori scrapes
+/// our stdout in CI, and pre-coloring breaks that.
+fn render_diff_text(d: &monomi_pipeline::VerdictDiff) {
+    println!("{}@{} → {}@{}", d.a.name, d.a.version, d.b.name, d.b.version);
+    println!(
+        "  stage1 verdict : {:?} → {:?}{}",
+        d.a.stage1_verdict,
+        d.b.stage1_verdict,
+        if d.stage1_verdict_changed { "  *" } else { "" }
+    );
+    println!(
+        "  final status   : {:?} → {:?}{}",
+        d.a.final_status,
+        d.b.final_status,
+        if d.final_status_changed { "  *" } else { "" }
+    );
+    println!(
+        "  score          : {} → {}  ({:+})",
+        d.a.score, d.b.score, d.score_delta
+    );
+    println!(
+        "  findings       : {} → {}",
+        d.a.finding_count, d.b.finding_count
+    );
+    println!(
+        "  capabilities   : {} → {}",
+        d.a.capability_count, d.b.capability_count
+    );
+
+    if !d.capabilities.introduced.is_empty() {
+        println!();
+        println!("capabilities introduced in {}:", d.b.version);
+        for c in &d.capabilities.introduced {
+            let flag = if c.is_decisive_on_introduction() {
+                " [decisive-on-introduction]"
+            } else {
+                ""
+            };
+            println!("  + {c:?}{flag}");
+        }
+    }
+    if !d.capabilities.removed.is_empty() {
+        println!();
+        println!("capabilities removed in {}:", d.b.version);
+        for c in &d.capabilities.removed {
+            println!("  - {c:?}");
+        }
+    }
+    if !d.findings.added.is_empty() {
+        println!();
+        println!("rules newly firing in {}:", d.b.version);
+        for r in &d.findings.added {
+            println!("  + {} ({:?})", r.rule_id, r.severity);
+        }
+    }
+    if !d.findings.removed.is_empty() {
+        println!();
+        println!("rules no longer firing in {}:", d.b.version);
+        for r in &d.findings.removed {
+            println!("  - {} ({:?})", r.rule_id, r.severity);
+        }
+    }
+    if !d.findings.severity_changes.is_empty() {
+        println!();
+        println!("severity changes:");
+        for c in &d.findings.severity_changes {
+            println!("  {} : {:?} → {:?}", c.rule_id, c.from, c.to);
+        }
+    }
+    if d.capabilities.introduced.is_empty()
+        && d.capabilities.removed.is_empty()
+        && d.findings.added.is_empty()
+        && d.findings.removed.is_empty()
+        && d.findings.severity_changes.is_empty()
+    {
+        println!();
+        println!("no functional change in detection surface.");
+    }
 }
 
 #[cfg(test)]

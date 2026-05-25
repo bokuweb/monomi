@@ -1031,6 +1031,7 @@ dependencies = [
  "monomi-core",
  "monomi-llm",
  "monomi-rules",
+ "serde",
  "thiserror",
  "tracing",
 ]

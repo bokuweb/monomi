@@ -13,5 +13,6 @@ monomi-llm.workspace = true
 monomi-catalog.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

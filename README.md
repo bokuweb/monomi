@@ -49,6 +49,7 @@ monomi backfill <list> --ecosystem npm|cargo|pypi|nuget --catalog-dir <dir>
 monomi publish <verdict.json> --catalog-dir <dir>
 monomi lookup <name>@<version> --catalog-dir <dir>   # local catalog
 monomi lookup <name>@<version> --catalog-url <url>   # HTTP/R2 catalog
+monomi diff <name>@<v1> <name>@<v2>                  # capability + finding delta
 ```
 
 Add `--stage1-only` to any command to skip the LLM step.
