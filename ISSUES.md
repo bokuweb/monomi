@@ -327,10 +327,17 @@ explicitly reserved for the maintainer — do not auto-implement.
   block-grade. Socket's reasoning is proprietary; ours can
   reference public post-mortems.
 
-- **`monomi diff <name>@v1 <name>@v2`.** Surface the capability
-  and finding delta between two versions on the CLI, mirroring
-  what M8's NPM030 computes internally. Useful for "I'm bumping
-  axios 1.6.0 → 1.7.0, what changed?" audits.
+- **`monomi diff <name>@v1 <name>@v2`.** **[shipped]**
+  CLI subcommand exposes the same capability/finding-delta view
+  the M8 NPM030 rule computes internally. Resolves each side from
+  catalog when `--catalog-dir`/`--catalog-url` is given, falls
+  back to fetch+scan. Outputs human-readable text by default,
+  `--format json` for machine consumers (sakimori in CI).
+  Pure-function `diff_verdicts` lives in `monomi-pipeline::
+  verdict_diff` so non-CLI consumers (HTTP API, future GitHub
+  Action) can call it the same way. Exit code 1 when the final
+  status got *worse* (Clean→Warn/Block, Warn→Block) so it can
+  gate CI.
 
 ### Medium priority — accuracy infrastructure
 
