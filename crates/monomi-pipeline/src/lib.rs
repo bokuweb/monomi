@@ -15,10 +15,12 @@ use monomi_llm::{build_context, Adjudicator, Stage2Context};
 use monomi_rules::{default_corpus, default_ruleset, run, RULESET_VERSION};
 
 pub mod diff;
+pub mod explain;
 pub mod history;
 pub mod verdict_diff;
 
 pub use diff::CapabilityDiffInput;
+pub use explain::{narrative, render_text as explain_text, RuleNarrative};
 pub use history::DEFAULT_BASELINE_WINDOW;
 pub use verdict_diff::{diff_verdicts, VerdictDiff};
 
