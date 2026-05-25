@@ -140,26 +140,32 @@ and the rest land as part of M13.
   High/defer.
 
 - **`NPM037` (runtime branches on `require.main.filename` /
-  `process.mainModule`)**
+  `process.mainModule`)** **[M13b — shipped in this PR]**
   Source reads `require.main.filename` / `process.mainModule`
   and string-matches its value against a literal package name
   list. Reference incident: event-stream / flatmap-stream 2018,
   payload only fired when consumed by `copay-dash`. Capability:
-  `DynamicEval`. Severity: High/defer.
+  `DynamicEval` + `TimeBomb` (gated activation). Severity:
+  High/defer. Two-prong match (main-module read + package-name
+  comparison) keeps FPs out of `require.main === module` CLI
+  patterns.
 
 - **`NPM038` (`require.cache[...]` mutation / module hijacking)**
-  Source writes to `require.cache[...]` or `delete require.cache[...]`
-  with a non-literal key. Module-substitution attack.
-  Capability: `DynamicRequire` + `DynamicEval`. Severity:
-  High/defer.
+  **[M13b — shipped in this PR]**
+  Source writes to `require.cache[...]` or `delete require.cache[...]`.
+  Module-substitution attack. Both `require.cache` and
+  `Module._cache` shapes are covered. Capability:
+  `DynamicRequire` + `DynamicEval`. Severity: High/defer.
 
 - **`NPM039` (mass file deletion shape, beyond
-  `fs.unlinkSync(__filename)`)**
-  `fs.unlink*`/`fs.rm*`/`rimraf` over a *traversal*
-  (`os.homedir()` + `readdirSync`, `process.cwd()` + glob,
+  `fs.unlinkSync(__filename)`)** **[M13b — shipped in this PR]**
+  `fs.rm*`/`rimraf`/`rm -rf` over a *traversal*
+  (`os.homedir()`, `process.cwd()`, `process.env.HOME`,
   root-anchored paths). Reference: node-ipc/peacenotwar 2022.
-  Capability: `FsWritePersistence` (subsumed) + new
-  `DestructiveFs` capability. Severity: Critical/decisive.
+  Capability: `DestructiveFs` (new, decisive on introduction).
+  Severity: Critical/decisive. Two-prong (destructive call +
+  traversal seed in same file) keeps FPs off legitimate
+  `rimraf('./dist')` build cleanup.
 
 - **`NPM040` (tarball ↔ git-tag divergence)** — see M12.
 
@@ -175,8 +181,11 @@ and the rest land as part of M13.
   Medium/defer.
 
 - **`NPM044` (`process.dlopen` / `process.binding` / V8 internals)**
-  Direct V8 internal access. Extremely unusual outside
-  Node-core-replacement libraries. Severity: High/defer.
+  **[M13b — shipped in this PR]**
+  Direct V8 internal access (`process.dlopen`, `process.binding`,
+  `process._linkedBinding`, `process._rawDebug`). Extremely
+  unusual outside Node-core-replacement libraries. Capability:
+  `V8Internal` (new) + `DynamicEval`. Severity: High/defer.
 
 - **`NPM045` (geolocation-gated destructive branches)**
   Source reads `process.env.LANG` / `Intl.DateTimeFormat`
@@ -185,8 +194,12 @@ and the rest land as part of M13.
   protestware. Severity: Critical/defer.
 
 - **`NPM046` (SetUID / SetGID binary in tarball)**
+  **[M13b — shipped in this PR]**
   Any file in the tarball whose tar header carries mode bits
-  `0o4000`/`0o2000`. Severity: Critical/decisive.
+  `0o4000`/`0o2000`. Applies to npm, cargo (.crate) and PyPI
+  sdist (all tar-based). Capability: `SetuidBinary` (new,
+  decisive on introduction). Severity: Critical/decisive.
+  Required plumbing `mode: Option<u32>` through `Entry`.
 
 - **`NPM047` (`crypto.createDecipheriv` with hardcoded key)**
   `createDecipheriv` / `createDecipher` call whose key argument
@@ -205,14 +218,135 @@ and the rest land as part of M13.
 
 ## Capability vocabulary follow-ups
 
-The M13a cluster introduces two new capabilities not in M7's set:
+The M13a/b clusters introduce these new capabilities not in M7's set:
 
-- `RegistryWrite` — code performs (or shells out to) a
+- `RegistryWrite` (M13a) — code performs (or shells out to) a
   registry-side write: `npm publish`, `npm token create`,
-  `cargo publish`, `twine upload`. Decisive on introduction
-  (added to `is_decisive_on_introduction`).
-- `DestructiveFs` — mass file deletion shape. Decisive on
-  introduction. To be added with `NPM039`.
+  `cargo publish`, `twine upload`. Decisive on introduction.
+- `SecretMaterial` (M13a) — references cryptocurrency private-key,
+  mnemonic, or seed-phrase shapes. Decisive on introduction.
+- `DestructiveFs` (M13b) — mass file deletion shape paired with
+  a homedir/cwd/root traversal seed. Decisive on introduction.
+- `SetuidBinary` (M13b) — file in tarball with setuid/setgid
+  mode bits. Decisive on introduction.
+- `V8Internal` (M13b) — direct V8/Node-core internal access
+  (`process.dlopen`, `process.binding`). Not decisive (some
+  legitimate Node-core-replacement libraries use it); pairs
+  with `DynamicEval` and defers to Stage 2.
 
 These extend `Capability` (additive — old verdicts still
 deserialize via `serde(default)`).
+
+## Differentiation & accuracy roadmap
+
+Brain-dump of where monomi can push past Socket/Snyk/Phylum
+and where the current ruleset has known FN/FP gaps. Ordered by
+expected impact-per-effort. Items marked **[OWNER: user]** are
+explicitly reserved for the maintainer — do not auto-implement.
+
+### High priority — accuracy / coverage
+
+- **`NPM041` dataflow-lite token taint.** **[shipped]**
+  `EnvExfilFlow`: bulk `process.env` consumer (`Object.keys/entries/
+  values`, `JSON.stringify`, spread, `for...in`, destructure,
+  alias, computed-key bracket access) paired with a network/exec
+  sink in the same body. Critical+decisive in install lifecycle,
+  High+defer in regular source. Two-prong keeps dotenv-style
+  config libraries (bulk env, no network) and thin HTTP clients
+  (network, no bulk env) out of the FP set.
+
+- **Real-tarball fixture corpus.** **[partially shipped]**
+  Infrastructure landed: `fixtures/corpus/manifest.json` (schema +
+  declared expectations per package), `scripts/fetch_corpus.sh`
+  (best-effort registry pull), `tests/corpus_replay.rs` (opt-in
+  `#[ignore]` test). In practice npm has unpublished almost every
+  canonical malicious version, so the fetch script currently 404s
+  on everything — manifest needs fallback URLs pointing at a
+  mirror (OSSF malicious-packages, web.archive.org, or private
+  Snyk/Phylum snapshot).
+  Synthetic regression suite shipped in parallel:
+  `tests/incident_shapes.rs` replays the *shape* of each major
+  2018–2024 incident (event-stream, ua-parser-js, node-ipc,
+  Shai-Hulud, Solana web3.js, anti-forensic self-delete). Runs
+  every push; six tests, six pass.
+
+- **AST-confirm pass for High/defer rules.** Regex-only matching
+  produces FPs in comments / string literals and FNs in minified
+  payloads (`;fs.rmSync(...` style). Run `oxc_parser` on JS
+  source as a second pass for the rules where confidence matters
+  most (NPM005, NPM017, NPM018, NPM038, NPM039). If AST confirms
+  the regex hit isn't inside a comment/string, bump severity by
+  one notch. If the rule fired *only* via regex and AST disagrees,
+  drop the finding entirely. Cheap, optional, big precision win.
+
+- **Minify / obfuscation scoring → new capability
+  `MinifiedNoSource`.** **[shipped — NPM050]**
+  Per-file heuristic: very long lines (max ≥1000, mean ≥250) OR
+  high `\x`/`\u` escape density (≥30/KB), shipped from a
+  dist/build path, no companion `*.map`, no readable sibling
+  source (`.ts` or unminified `.js` with the same stem). Emits
+  `Capability::MinifiedNoSource` and a Medium+defer finding.
+  Implements plan.md threat-model item 5. Followup: AST-based
+  identifier-entropy refinement once `oxc_parser` is in.
+
+- **`NPM048` maintainer-add timestamp.** `NPM016` looks at
+  package age. `NPM048` looks at the maintainer-add timestamp
+  from npm's `/-/user/<name>` — catches "established package,
+  new maintainer added 3 days ago, immediately publishes". Pairs
+  with `RegistryWrite` for the Shai-Hulud worm-takeover shape.
+
+### Medium priority — distribution & integration
+
+- **CycloneDX VEX output.** Convert `Verdict` →
+  CycloneDX-VEX (`affected` / `not_affected` /
+  `under_investigation`). Lets `grype` / `trivy` / GitHub
+  Dependabot consume monomi verdicts directly. `monomi vex
+  <integrity>` subcommand.
+
+- **`monomi explain <integrity>`.** Render the verdict as a
+  human-readable narrative: for each finding, the CVE-retrospective
+  reference incident, what the rule actually matched, why it's
+  block-grade. Socket's reasoning is proprietary; ours can
+  reference public post-mortems.
+
+- **`monomi diff <name>@v1 <name>@v2`.** Surface the capability
+  and finding delta between two versions on the CLI, mirroring
+  what M8's NPM030 computes internally. Useful for "I'm bumping
+  axios 1.6.0 → 1.7.0, what changed?" audits.
+
+### Medium priority — accuracy infrastructure
+
+- **PyPI wheel `RECORD` divergence.** plan.md M3 item.
+  `*.dist-info/RECORD` carries declared hashes; compare to
+  actual file bytes and emit a finding on mismatch. Tampering
+  signal that wheel-based PyPI attacks have used.
+
+- **Continuous feed for cargo / pypi / nuget.** Today only npm
+  has `_changes`. Add:
+  - cargo: `https://crates.io/api/v1/summary` polling +
+    `index.crates.io` git pulls
+  - pypi: `pypi.org/rss/updates.xml` + `pypi-json-load` BigQuery
+    fallback
+  - nuget: `catalog/index.json` cursor
+  Each is ~100 LOC reusing the npm `changes.rs` retry/backoff
+  pattern.
+
+- **Verdict signing (sigstore).** Sign each verdict JSON with
+  Fulcio-issued cert. Consumers verify "monomi the binary at
+  commit X saw these bytes Y" without trusting our R2 bucket.
+  Required if we ever want third parties to mirror the catalog.
+
+### Reserved / lower priority
+
+- **sakimori static × dynamic join. [OWNER: user]** Cross-repo
+  work in `bokuweb/sakimori`; do not auto-implement here.
+  monomi side just needs to keep `Verdict` schema stable so
+  sakimori can join on `integrity` at install time.
+
+- **Go modules / Maven / RubyGems.** Same `Ecosystem` trait
+  pattern. Defer until npm/cargo/pypi/nuget are saturated.
+
+- **Combination-based severity bumps.** Already in the
+  "Deferred from M8" section above — pairs like
+  `EnvSecretLookup + NetHttp` should be Critical even though
+  neither is decisive alone.

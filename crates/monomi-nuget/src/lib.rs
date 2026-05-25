@@ -280,6 +280,7 @@ fn walk_nupkg(tar: &Tarball, limits: &Limits) -> Result<Vec<Entry>> {
             kind,
             size,
             bytes,
+            mode: None,
         });
     }
     Ok(out)

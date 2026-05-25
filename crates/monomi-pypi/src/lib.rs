@@ -445,11 +445,13 @@ fn walk_sdist(tar: &Tarball, limits: &Limits) -> Result<Vec<Entry>> {
             .read_to_end(&mut bytes)
             .map_err(|e| Error::InvalidTarball(e.to_string()))?;
         let kind = classify(&logical, &bytes);
+        let mode = entry.header().mode().ok();
         out.push(Entry {
             path: logical,
             kind,
             size,
             bytes,
+            mode,
         });
     }
     Ok(out)

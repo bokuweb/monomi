@@ -2,3 +2,8 @@
 **/*.rs.bk
 Cargo.lock.bak
 .DS_Store
+
+# Malicious-package replay corpus — fetched on demand, never
+# committed (the .tgz files literally are malware).
+/fixtures/corpus/*.tgz
+/fixtures/corpus/.cache/

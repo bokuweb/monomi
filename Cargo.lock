@@ -1006,6 +1006,7 @@ dependencies = [
  "monomi-pypi",
  "once_cell",
  "regex",
+ "serde",
  "serde_json",
  "tar",
  "zip",

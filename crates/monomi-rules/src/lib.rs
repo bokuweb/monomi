@@ -17,9 +17,11 @@ mod cloud_metadata;
 mod corpus;
 mod crypto_miner;
 mod dangerous_apis;
+mod destructive_fs;
 mod dns_exfil;
 mod dynamic_require;
 mod encoded_url;
+mod env_exfil_flow;
 mod env_harvest;
 mod eval_atob;
 mod eval_blob;
@@ -28,7 +30,9 @@ mod hidden_unicode;
 mod install_http;
 mod known_exfil;
 mod lifecycle_present;
+mod main_module_branch;
 mod metadata_smuggling;
+mod minified_no_source;
 mod native_binary;
 mod nuget_install_ps1;
 mod nuget_tools_dll;
@@ -39,13 +43,16 @@ mod pypi_setup;
 mod raw_github_fetch;
 mod recency;
 mod registry_write;
+mod require_cache_mutation;
 mod runner;
 mod secret_material;
 mod self_delete;
+mod setuid_binary;
 mod shell_pipe;
 mod time_bomb;
 mod token_theft;
 mod typosquat;
+mod v8_internal;
 mod wallet_drainer;
 
 pub use bundled_deps::BundleDependenciesDeclared;
@@ -58,9 +65,11 @@ pub use cloud_metadata::CloudMetadataLiteral;
 pub use corpus::default_corpus;
 pub use crypto_miner::CryptoMinerLiteral;
 pub use dangerous_apis::DangerousLifecycleApi;
+pub use destructive_fs::DestructiveFsTraversal;
 pub use dns_exfil::DnsExfil;
 pub use dynamic_require::DynamicRequire;
 pub use encoded_url::EncodedUrlBytes;
+pub use env_exfil_flow::EnvExfilFlow;
 pub use env_harvest::EnvHarvest;
 pub use eval_atob::EvalAtobChain;
 pub use eval_blob::EvalLargeBlob;
@@ -69,7 +78,9 @@ pub use hidden_unicode::HiddenUnicode;
 pub use install_http::InstallTimeOutboundHttp;
 pub use known_exfil::KnownExfilEndpoint;
 pub use lifecycle_present::LifecyclePresent;
+pub use main_module_branch::MainModuleBranch;
 pub use metadata_smuggling::MetadataPayloadSmuggling;
+pub use minified_no_source::MinifiedNoSource;
 pub use native_binary::NativeBinaryUndeclared;
 pub use nuget_install_ps1::{InstallPs1DangerousApi, InstallPs1Present};
 pub use nuget_tools_dll::ToolsNativeBinary;
@@ -80,13 +91,16 @@ pub use pypi_setup::{SetupPyDangerousApi, SetupPyPresent};
 pub use raw_github_fetch::RawScmFetch;
 pub use recency::RecencySignals;
 pub use registry_write::InstallTimeRegistryWrite;
+pub use require_cache_mutation::RequireCacheMutation;
 pub use runner::{run, RunOutcome, RULESET_VERSION};
 pub use secret_material::SecretMaterialLiteral;
 pub use self_delete::SelfDeletePayload;
+pub use setuid_binary::SetuidBinaryInTarball;
 pub use shell_pipe::LifecycleShellPipe;
 pub use time_bomb::TimeBombActivation;
 pub use token_theft::CiTokenTheft;
 pub use typosquat::TyposquatCandidate;
+pub use v8_internal::V8InternalAccess;
 pub use wallet_drainer::WalletDrainerLiteral;
 
 use monomi_core::Rule;
@@ -127,6 +141,16 @@ pub fn default_ruleset() -> Vec<Box<dyn Rule>> {
         Box::new(SecretMaterialLiteral),
         Box::new(InstallTimeRegistryWrite),
         Box::new(InstallTimeChmodExec),
+        // M13c — dataflow-lite (NPM041)
+        Box::new(EnvExfilFlow),
+        // M13b — CVE-retrospective cluster (continued: NPM037-046)
+        Box::new(MainModuleBranch),
+        Box::new(RequireCacheMutation),
+        Box::new(DestructiveFsTraversal),
+        Box::new(V8InternalAccess),
+        Box::new(SetuidBinaryInTarball),
+        // plan.md threat-model item 5 — source divergence
+        Box::new(MinifiedNoSource),
         // cargo-only
         Box::new(BuildRsPresent),
         Box::new(BuildRsDangerousApi),

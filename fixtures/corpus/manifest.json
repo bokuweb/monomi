@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "description": "Replay corpus — historically-malicious npm tarballs and the rules that retrospectively flag them. The .tgz files themselves are gitignored (they literally are malware); run scripts/fetch_corpus.sh to populate, then `cargo test --test corpus_replay -- --ignored` to run.",
+  "entries": [
+    {
+      "id": "event-stream-3.3.6",
+      "package": "event-stream",
+      "version": "3.3.6",
+      "tarball": "event-stream-3.3.6.tgz",
+      "url": "https://registry.npmjs.org/event-stream/-/event-stream-3.3.6.tgz",
+      "note": "The wrapping package that transitively pulled flatmap-stream. event-stream itself is benign; this entry is here so the corpus can demonstrate that we DO NOT false-positive on it.",
+      "must_fire_any": [],
+      "must_not_fire": ["NPM005", "NPM006", "NPM018", "NPM039"]
+    },
+    {
+      "id": "flatmap-stream-0.1.1",
+      "package": "flatmap-stream",
+      "version": "0.1.1",
+      "tarball": "flatmap-stream-0.1.1.tgz",
+      "url": "https://registry.npmjs.org/flatmap-stream/-/flatmap-stream-0.1.1.tgz",
+      "note": "event-stream 2018 incident. Ships large base64 blob + eval, gated on require.main.filename matching copay-dash.",
+      "must_fire_any": ["NPM005", "NPM037"]
+    },
+    {
+      "id": "ua-parser-js-0.7.29",
+      "package": "ua-parser-js",
+      "version": "0.7.29",
+      "tarball": "ua-parser-js-0.7.29.tgz",
+      "url": "https://registry.npmjs.org/ua-parser-js/-/ua-parser-js-0.7.29.tgz",
+      "note": "Oct 2021 maintainer-account takeover. preinstall fetches and chmod+x a binary cryptominer.",
+      "must_fire_any": ["NPM003", "NPM019", "NPM036"]
+    },
+    {
+      "id": "ua-parser-js-1.0.0",
+      "package": "ua-parser-js",
+      "version": "1.0.0",
+      "tarball": "ua-parser-js-1.0.0.tgz",
+      "url": "https://registry.npmjs.org/ua-parser-js/-/ua-parser-js-1.0.0.tgz",
+      "note": "Same incident, second hijacked version.",
+      "must_fire_any": ["NPM003", "NPM019", "NPM036"]
+    },
+    {
+      "id": "coa-2.0.3",
+      "package": "coa",
+      "version": "2.0.3",
+      "tarball": "coa-2.0.3.tgz",
+      "url": "https://registry.npmjs.org/coa/-/coa-2.0.3.tgz",
+      "note": "Nov 2021 hijack — analogous to ua-parser-js with the same preinstall fetch-and-execute pattern.",
+      "must_fire_any": ["NPM003", "NPM019"]
+    },
+    {
+      "id": "rc-1.2.9",
+      "package": "rc",
+      "version": "1.2.9",
+      "tarball": "rc-1.2.9.tgz",
+      "url": "https://registry.npmjs.org/rc/-/rc-1.2.9.tgz",
+      "note": "Nov 2021 hijack, same family as ua-parser-js and coa.",
+      "must_fire_any": ["NPM003", "NPM019"]
+    },
+    {
+      "id": "node-ipc-10.1.1",
+      "package": "node-ipc",
+      "version": "10.1.1",
+      "tarball": "node-ipc-10.1.1.tgz",
+      "url": "https://registry.npmjs.org/node-ipc/-/node-ipc-10.1.1.tgz",
+      "note": "peacenotwar / protestware 2022. Geolocation-gated destructive overwrite of files under user homedir.",
+      "must_fire_any": ["NPM039", "NPM045"]
+    }
+  ]
+}

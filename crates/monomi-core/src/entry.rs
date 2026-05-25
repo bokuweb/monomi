@@ -51,6 +51,10 @@ pub struct Entry {
     pub kind: EntryKind,
     pub size: u64,
     pub bytes: Vec<u8>,
+    /// Unix file mode from the tar header (low 12 bits — permission +
+    /// SetUID/SetGID/sticky). `None` when the source ecosystem doesn't
+    /// carry mode bits (`.nupkg` zip, etc.).
+    pub mode: Option<u32>,
 }
 
 impl Entry {

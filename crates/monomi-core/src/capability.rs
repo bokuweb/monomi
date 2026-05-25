@@ -106,6 +106,23 @@ pub enum Capability {
     /// Trojan-source bidi override / zero-width / mixed-script
     /// identifier.
     TrojanSource,
+    /// Mass file deletion shape — `fs.rm*` / `rimraf` driven by a
+    /// traversal seed (`os.homedir()`, `process.cwd()`, root-anchored
+    /// path). Distinct from `SelfDelete` (just `__filename`).
+    DestructiveFs,
+    /// SetUID / SetGID bit set on a file shipped in the tarball.
+    /// No legitimate reason for a published npm/cargo package to
+    /// carry a setuid binary.
+    SetuidBinary,
+    /// Direct V8 internal access (`process.dlopen`, `process.binding`,
+    /// `process._linkedBinding`). Extremely rare outside Node-core
+    /// replacements.
+    V8Internal,
+    /// Package ships minified `dist/` (or equivalent) JS with no
+    /// companion `*.map` and no readable original — the running
+    /// code cannot be audited before install. plan.md threat-model
+    /// item 5.
+    MinifiedNoSource,
 }
 
 /// Canonical aggregation of capabilities. `BTreeSet` is used because
@@ -126,6 +143,8 @@ impl Capability {
                 | Capability::FsWritePersistence
                 | Capability::RegistryWrite
                 | Capability::SecretMaterial
+                | Capability::DestructiveFs
+                | Capability::SetuidBinary
         )
     }
 }
