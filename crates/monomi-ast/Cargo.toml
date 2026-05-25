@@ -1,0 +1,15 @@
+[package]
+name = "monomi-ast"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "JS/TS AST analysis layer for monomi rules — parse once, query via combinators"
+
+[dependencies]
+monomi-core.workspace = true
+oxc_allocator = "0.132"
+oxc_ast = "0.132"
+oxc_ast_visit = "0.132"
+oxc_parser = "0.132"
+oxc_span = "0.132"

@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/monomi-core",
+    "crates/monomi-ast",
     "crates/monomi-npm",
     "crates/monomi-cargo",
     "crates/monomi-pypi",
@@ -39,6 +40,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 monomi-core = { path = "crates/monomi-core" }
+monomi-ast = { path = "crates/monomi-ast" }
 monomi-npm = { path = "crates/monomi-npm" }
 monomi-cargo = { path = "crates/monomi-cargo" }
 monomi-pypi = { path = "crates/monomi-pypi" }

@@ -51,6 +51,7 @@ fn analyze(bytes: Vec<u8>) -> monomi_core::Stage1Result {
         diff: None,
         registry: None,
         corpus: &corpus,
+        ast: None,
     };
     run(&default_ruleset(), &ctx).stage1
 }
