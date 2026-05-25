@@ -7,6 +7,7 @@
 //!
 //! More rules will land per the V1 table.
 
+mod ast_helpers;
 mod bundled_deps;
 mod cargo_build_rs;
 mod cargo_include_payload;

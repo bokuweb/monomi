@@ -46,6 +46,9 @@ impl Rule for V8InternalAccess {
             }
             let Some(text) = entry.text() else { continue };
             if let Some(m) = V8_INTERNAL_RE.find(text) {
+                if !crate::ast_helpers::regex_hit_in_code(ctx, &entry.path, text, m.start()) {
+                    continue;
+                }
                 out.push(Finding {
                     rule_id: "NPM044".into(),
                     severity: Severity::High,
